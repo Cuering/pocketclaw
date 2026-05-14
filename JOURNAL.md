@@ -89,7 +89,7 @@ The original concept (PocketClaw — overlay + wake word + voice + PDFs + hardwa
 
 ---
 
-## Day 2 — End of day (May 14, ~midnight)
+## Day 2 — End of day (May 14, 8:30 PM IST)
 
 ### Wins (the journey)
 
