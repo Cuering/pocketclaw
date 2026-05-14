@@ -1,4 +1,13 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- For downloading the Gemma model file -->
+    <uses-permission android:name="android.permission.INTERNET"/>
+
+    <!-- For the foreground download service (>500MB models on Android) -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"/>
+
+    <!-- For showing a notification during model download -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <application
         android:label="pocketclaw"
         android:name="${applicationName}"
@@ -30,6 +39,17 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+            <!-- OpenCL libraries for Gemma GPU delegation. android:required="false" means
+     the app still installs on devices without them; it just falls back to CPU. -->
+        <uses-native-library
+            android:name="libOpenCL.so"
+            android:required="false"/>
+        <uses-native-library
+            android:name="libOpenCL-car.so"
+            android:required="false"/>
+        <uses-native-library
+            android:name="libOpenCL-pixel.so"
+            android:required="false"/>
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

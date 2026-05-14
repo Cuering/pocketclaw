@@ -24,10 +24,18 @@ android {
         applicationId = "com.pocketclaw.pocketclaw"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
+        minSdk = 24
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        // ABI filter: restrict native libs to arm64-v8a only.
+        // flutter_gemma's .litertlm engine ships arm64-v8a prebuilts only.
+        // Including other ABIs would create APKs that crash at model load on
+        // x86_64 emulators or armeabi-v7a (very old) devices.
+        // Apple Silicon Mac emulators ARE arm64-v8a, so we're fine.
+        ndk {
+            abiFilters += "arm64-v8a"
+        }
     }
 
     buildTypes {
