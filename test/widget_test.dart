@@ -4,7 +4,6 @@
 // We don't test Gemma calls here because they require the model on disk and
 // a real device. Those are manual / integration tests.
 
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:pocketclaw/main.dart';

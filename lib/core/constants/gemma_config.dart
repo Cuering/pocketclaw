@@ -27,6 +27,14 @@ abstract class GemmaConfig {
   // tool-call tokens and chat template. Using the wrong enum = broken outputs.
   static const ModelType modelType = ModelType.gemma4;
 
+  // ModelFileType: which file FORMAT — drives engine selection.
+  // CRITICAL: defaults to ModelFileType.task in flutter_gemma, but our model
+  // is .litertlm. Without this, the plugin routes load() to the Kotlin
+  // EngineFactory (for .task files), which throws because it knows it's the
+  // wrong engine for .litertlm files. With this, load() correctly routes to
+  // the Dart FFI LiteRT-LM client.
+
+  static const ModelFileType fileType = ModelFileType.litertlm;
   // Max tokens the model can produce in one response. 2048 is a sensible
   // default — long enough for paragraphs, short enough not to hang the UI.
   // We can tune this later per-screen if needed.

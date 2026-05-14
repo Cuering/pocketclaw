@@ -105,6 +105,7 @@ class GemmaService {
 
       await fg.FlutterGemma.installModel(
         modelType: GemmaConfig.modelType,
+        fileType: GemmaConfig.fileType,
       ).fromNetwork(GemmaConfig.modelUrl).withProgress((progress) {
         // `withProgress` callback fires repeatedly during download.
         // `progress` is an int 0–100 per the modern API contract.

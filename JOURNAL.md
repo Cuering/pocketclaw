@@ -86,3 +86,75 @@ The original concept (PocketClaw — overlay + wake word + voice + PDFs + hardwa
 ⏭ Tomorrow (Day 3): get the Nord USB connection working, run on real hardware, first actual Gemma response.
 
 ---
+
+---
+
+## Day 2 — End of day (May 14, ~midnight)
+
+### Wins (the journey)
+
+- Got the Nord CE 4 USB connection working — real hardware in the loop.
+- Model successfully downloaded over real WiFi to the Nord: full 2.4 GB,
+  100%, plugin marked it as active. **That alone was a huge step up** from
+  the emulator path where the same download had failed three times to
+  NAT-related timeouts. Real device = real network = it just worked.
+- Eventually identified, isolated, and fixed the `load()` routing bug.
+- First-ever Gemma 4 E2B response on a real Android device from this app.
+
+### The actual bug
+
+`FlutterGemma.installModel()` defaults its `fileType` parameter to
+`ModelFileType.task`. We were installing a `.litertlm` file without
+explicitly passing `fileType: ModelFileType.litertlm`, so the plugin's
+internal metadata mis-labeled the model. On `load()`, that metadata
+routed the file to the Kotlin `EngineFactory` (which is for `.task`
+files), and that factory threw because the bytes were obviously a
+LiteRT-LM model.
+
+Fix: one named parameter on `installModel()`.
+
+### What it took to find it
+
+A *lot*. Hours. We tried — in order:
+
+1. Multiple plugin version rollbacks (0.15.x → 0.14.x → 0.13.x). Each
+   failed identically. Not a regression.
+2. Different `ModelType` enum values (`gemmaIt` vs `gemma4`). No effect —
+   `ModelType` is about chat templates, not file routing.
+3. Switching from `.fromNetwork()` to `.fromFile()` with the file
+   pre-pushed via `adb`. Sidestepped network entirely. Same error.
+4. Manually pushing the file into the app sandbox via `adb shell run-as`
+   + `tee`. (Side lesson: Android scoped storage + SELinux are a fence
+   maze. The right cat-pipe through `run-as tee` works; `cp` through
+   `run-as` doesn't.)
+5. Hours of looking at hallucinated documentation. AI-summarized search
+   snippets had wrong version numbers and made up API surfaces. I had
+   to keep verifying versions against `~/.pub-cache/`.
+
+The fix came from reading the plugin source code directly:
+
+\`\`\`bash
+grep -r "ModelFileType" ~/.pub-cache/hosted/pub.dev/flutter_gemma-0.15.1/lib/
+\`\`\`
+
+That single command exposed where `ModelFileType.litertlm` was consumed,
+and showed `installModel()` defaulted to `.task`.
+
+### The lesson
+
+For library-related bugs, **read the library source on your disk before
+reading anything online**. The version you have installed is the only
+source of truth that matters. Web searches and docs lag, AI summaries
+can be flat-out wrong, and Stack Overflow is for last week's bug, not
+yours.
+
+Full debugging playbook captured in `docs/debugging-playbook.md`.
+
+### End-of-day state
+
+✅ Project + commits clean on GitHub
+✅ flutter_gemma 0.15.1 integrated, Gemma 4 E2B working
+✅ Install / load / generate all succeed on Nord CE 4
+✅ Service layer tested end-to-end with real model
+⏭ Day 3: image input (multimodal Gemma), bottom-sheet chat UI, follow-up
+  Q&A. With the model working, the rest is "just" Flutter UI work.
