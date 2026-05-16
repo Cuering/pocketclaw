@@ -143,7 +143,10 @@ class GemmaService {
   // Generate a single text response (non-streaming, simplest possible API).
   // Throws if the model isn't loaded. We'll add streaming + image input
   // in a later iteration once this works end-to-end.
-  Future<String> generate(String prompt) async {
+  Future<String> generate(
+    String prompt, {
+    void Function(String chunk)? onToken,
+  }) async {
     final model = _model;
     if (model == null) {
       throw const GemmaException('Model not loaded. Call load() first.');
@@ -151,41 +154,50 @@ class GemmaService {
 
     try {
       _state.value = GemmaState.generating;
-
       // Create a fresh chat session for this prompt.
       // (For multi-turn we'd keep one chat and add chunks; we'll get to that.)
       final chat = await model.createChat();
-      await chat.addQueryChunk(fg.Message.text(text: prompt, isUser: true));
-
-      // generateChatResponse() returns a ModelResponse, NOT a plain String.
-      // It can be a TextResponse, FunctionCallResponse, or ThinkingResponse —
-      // because Gemma 4 supports all three. We have to check which it is and
-      // extract the text accordingly. `is` is Dart's runtime type check.
-      final fg.ModelResponse response = await chat.generateChatResponse();
-
-      // Close the chat to release its native resources. We do this BEFORE
-      // returning so it happens regardless of which branch we take below.
+      const systemPreamble =
+          'You are Claw, the on-device assistant inside PocketClaw on Android. '
+          'You run locally and offline. '
+          'Match your answer length to the question: brief for simple questions, '
+          'detailed when the user clearly wants depth, code when code is asked for. '
+          'Prefer plain answers over preambles; never restate the question. '
+          'If unsure, say so briefly rather than padding.';
+      await chat.addQueryChunk(
+        fg.Message.text(text: '$systemPreamble\n\nUser: $prompt', isUser: true),
+      );
+      // Buffer to assemble the full response. We append to this as chunks
+      // arrive, and return it at the end so callers that want the whole
+      // string still get it.
+      final buffer = StringBuffer();
+      // `await for` reads a Stream one element at a time, synchronously
+      // (with respect to this function), suspending until the next element
+      // arrives. The body runs once per ModelResponse the model emits.
+      await for (final response in chat.generateChatResponseAsync()) {
+        // Same type-narrowing pattern as before, but now per-chunk.
+        if (response is fg.TextResponse) {
+          buffer.write(response.token);
+          onToken?.call(
+            response.token,
+          ); // null-safe call — `?.` short-circuits if onToken is null
+        } else if (response is fg.ThinkingResponse) {
+          // Thinking mode chunks — we're not enabling thinking mode for v1,
+          // but handle defensively. We DON'T send these to onToken because
+          // they're the model's internal reasoning, not the user-facing reply.
+          buffer.write(response.content);
+        } else {
+          // FunctionCallResponse or any unexpected type — we throw on unknown
+          // so we don't return garbled content. v1 isn't using tools.
+          throw GemmaException(
+            'Unexpected response type during streaming: ${response.runtimeType}',
+          );
+        }
+      }
       await chat.close();
 
       _state.value = GemmaState.ready;
-
-      // Extract the text from whichever ModelResponse variant we got.
-      // For now we only handle the TextResponse case — Gemma 4 in chat mode
-      // returns TextResponse unless we've registered tools (we haven't) or
-      // turned on thinking mode (we haven't). If we get an unexpected type,
-      // throw rather than return a garbled string.
-      if (response is fg.TextResponse) {
-        return response.token;
-      } else if (response is fg.ThinkingResponse) {
-        // Gemma 4 might emit a ThinkingResponse if thinking mode is on.
-        // We didn't enable it, but handle it defensively.
-        return response.content;
-      } else {
-        // FunctionCallResponse or anything else — not expected in v1.
-        throw GemmaException(
-          'Unexpected response type: ${response.runtimeType}',
-        );
-      }
+      return buffer.toString();
     } catch (e) {
       _lastError = e;
       _state.value = GemmaState.error;

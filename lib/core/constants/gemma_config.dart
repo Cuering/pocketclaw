@@ -38,7 +38,7 @@ abstract class GemmaConfig {
   // Max tokens the model can produce in one response. 2048 is a sensible
   // default — long enough for paragraphs, short enough not to hang the UI.
   // We can tune this later per-screen if needed.
-  static const int maxTokens = 2048;
+  static const int maxTokens = 1024;
 
   // GPU backend is ~5-7x faster than CPU on phones (per flutter_gemma docs).
   // On devices without GPU support, the plugin auto-falls-back to CPU.

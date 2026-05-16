@@ -144,9 +144,40 @@ class _GemmaTestScreenState extends State<GemmaTestScreen>
       return;
     }
     try {
-      _setResponse('Generating...');
-      final reply = await GemmaService.instance.generate(prompt);
-      _setResponse(reply);
+      // Reset the response area — tokens will fill it in as they arrive.
+      _setResponse('');
+      // Track start time for the demo-video tokens/sec counter.
+      // DateTime.now() is fine here; we don't need monotonic clock precision.
+      final startedAt = DateTime.now();
+      var tokenCount = 0;
+
+      final full = await GemmaService.instance.generate(
+        prompt,
+        // This callback fires once per token. We append to _response and call
+        // setState so the UI rebuilds. setState is cheap; doing it per-token
+        // is fine for a 2B model emitting ~10-30 tokens/sec.
+        onToken: (chunk) {
+          if (!mounted) {
+            return; // guard: widget may be gone if user navigated away
+          }
+          tokenCount++;
+          setState(() {
+            _response = '$_response$chunk';
+          });
+        },
+      );
+      // After streaming ends, append a tiny perf summary at the bottom.
+      // Useful for the demo video and for tuning later. Remove before final UI.
+      final elapsed = DateTime.now().difference(startedAt);
+      final tps = elapsed.inMilliseconds > 0
+          ? (tokenCount * 1000 / elapsed.inMilliseconds).toStringAsFixed(1)
+          : '∞';
+      if (mounted) {
+        setState(() {
+          _response =
+              '$full\n\n— $tokenCount tok / ${elapsed.inSeconds}s ≈ $tps tok/s';
+        });
+      }
     } catch (e) {
       _setResponse('Generate failed: $e');
     }
