@@ -231,3 +231,107 @@ moment the user's request doesn't match the rule. Character generalizes.
 ✅ Adaptive system prompt — model length-matches the question
 ✅ 7-8 tok/s sustained on Adreno GPU, on a sub-$300 phone, fully offline
 ⏭ Image input (multimodal Gemma 4) next.
+
+---
+
+## Day 3b — May 16, late evening IST (image input working)
+
+After committing the streaming + system-prompt work, kept going and added
+the multimodal pipeline. Image input → Gemma 4 vision → text response.
+End-to-end on the Nord CE 4, fully offline.
+
+### Stack added today
+
+- `image_picker: ^1.2.2` for gallery access.
+- Android manifest: `READ_MEDIA_IMAGES` (Android 13+) and
+  `READ_EXTERNAL_STORAGE` (capped at SDK 32) for backward compat.
+- `GemmaService.generate()` now accepts optional `Uint8List? imageBytes`
+  and routes to `Message.withImage(...)` when present.
+- Diagnostic screen got a 4th button (Attach Image) and a thumbnail card
+  with a clear-image affordance.
+
+### The bug I would have spent hours on without grep
+
+First attempt: attached an image, asked "what's in this image?", model
+replied *"Please provide the image."*
+
+Image was in memory (the thumbnail was visible), `Message.withImage(...)`
+was being called correctly, `flutter analyze` was clean. But the model
+clearly never saw an image.
+
+Logs showed `messageType=MessageType.text` for the multimodal message —
+which looked suspicious, but reading the plugin source revealed there's
+no `MessageType.image` value at all. Images are detected by the
+`hasImage` getter (`imageBytes != null || images.isNotEmpty`), not by
+the type enum. So `messageType=text` is *normal* for an image message;
+it wasn't actually the bug.
+
+The real bug was one grep away:
+
+```bash
+---
+
+## Day 3b — May 16, late evening IST (image input working)
+
+After committing the streaming + system-prompt work, kept going and added the multimodal pipeline. Image input → Gemma 4 vision → text response. End-to-end on the Nord CE 4, fully offline.
+
+### Stack added today
+
+- `image_picker: ^1.2.2` for gallery access.
+- Android manifest: `READ_MEDIA_IMAGES` (Android 13+) and `READ_EXTERNAL_STORAGE` (capped at SDK 32) for backward compat.
+- `GemmaService.generate()` now accepts optional `Uint8List? imageBytes` and routes to `Message.withImage(...)` when present.
+- Diagnostic screen got a 4th button (Attach Image) and a thumbnail card with a clear-image affordance.
+
+### The bug I would have spent hours on without grep
+
+First attempt: attached an image, asked "what's in this image?", model replied *"Please provide the image."*
+
+Image was in memory (the thumbnail was visible), `Message.withImage(...)` was being called correctly, `flutter analyze` was clean. But the model clearly never saw an image.
+
+Logs showed `messageType=MessageType.text` for the multimodal message — which looked suspicious, but reading the plugin source revealed there's no `MessageType.image` value at all. Images are detected by the `hasImage` getter (`imageBytes != null || images.isNotEmpty`), not by the type enum. So `messageType=text` is *normal* for an image message; it wasn't actually the bug.
+
+The real bug was one grep away:
+
+    grep -rn "supportImage" ~/.pub-cache/hosted/pub.dev/flutter_gemma-0.15.1/lib/
+
+`flutter_gemma`'s `addQueryChunk()` (both the FFI path used for `.litertlm` and the mobile path) gates image handling on a `supportImage` flag that defaults to **false**:
+
+    if (message.hasImage && supportImage) {
+      _pendingImages.add(message.imageBytes!);
+    }
+
+If you don't explicitly pass `supportImage: true` to `getActiveModel(...)`, the plugin silently strips image bytes from your message and sends only the text. The model has no way to know an image was attached, so it asks the user to provide one.
+
+Same shape of bug as the Day-2 `ModelFileType.litertlm` issue — a default parameter that's wrong for our use case, no error, no warning, just silently degraded behavior.
+
+### The fix
+
+Two lines:
+
+    // gemma_config.dart
+    static const bool supportImage = true;
+    static const int maxNumImages = 1;
+
+    // gemma_service.dart — in load()
+    _model = await fg.FlutterGemma.getActiveModel(
+      maxTokens: GemmaConfig.maxTokens,
+      preferredBackend: GemmaConfig.preferredBackend,
+      supportImage: GemmaConfig.supportImage,         // ← was missing
+      maxNumImages: GemmaConfig.maxNumImages,         // ← was missing
+    );
+
+Load time bumped from ~7s to ~10-12s (the vision encoder also initializes now). Inference path is otherwise unchanged. Image gets fed into the vision encoder, embeddings get prepended to the token stream, model can actually see what we sent.
+
+After the fix: attached a photo, asked "What's in this image?", got a real description.
+
+### Pattern recognition
+
+This is the second time the answer was "the plugin has a `supportX` / `useX` / `xFileType` parameter that defaults to false/wrong for our case, and not setting it explicitly fails silently." Adding this rule to the debugging playbook: **when feature-X doesn't work, grep the library for 'support' + 'X', 'enable' + 'X', or 'with' + 'X' parameters.** Defaults are where silent failures hide.
+
+### End-of-day state (~10 PM IST)
+
+- ✅ Multimodal Gemma 4 working on real hardware, offline, on a sub-$300 phone in India
+- ✅ Streaming text from image+text prompts at ~7 tok/s
+- ✅ One 30-second screen recording captured for the demo video reel
+- ⏭ Day 4 (May 17): floating overlay bubble via `flutter_overlay_window`. Genuinely tricky Android work — different isolate from the main app, permission flow for SYSTEM_ALERT_WINDOW. Going in fresh.
+

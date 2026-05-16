@@ -3,8 +3,9 @@
 // PocketClaw entry point + a temporary diagnostic screen for testing Gemma.
 // This screen will be replaced once we have real chat UI; for now it's a
 // minimal "did Gemma work?" harness.
-
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:flutter_gemma/flutter_gemma.dart';
 
 import 'services/gemma_service.dart';
@@ -74,7 +75,20 @@ class _GemmaTestScreenState extends State<GemmaTestScreen>
   // The latest response from Gemma. Mutable, so plain `String`.
   // Starts empty; updates via setState.
   String _response = '';
+  // ImagePicker is the entry point to the gallery/camera plugin.
+  // `final` because we don't replace it; `late` not needed because we
+  // can initialize it inline.
+  final ImagePicker _picker = ImagePicker();
 
+  // Currently-attached image bytes. Null = no image selected.
+  // Uint8List because that's what Gemma's withImage() wants and what
+  // XFile.readAsBytes() returns.
+  Uint8List? _imageBytes;
+
+  // Optional human-readable filename for the thumbnail caption.
+  // Helps when the user picks multiple times — they see WHICH image is
+  // currently attached.
+  String? _imageName;
   // ── Lifecycle ──────────────────────────────────────────────────────────
 
   // `initState` runs ONCE when this State object is first created — before
@@ -153,6 +167,8 @@ class _GemmaTestScreenState extends State<GemmaTestScreen>
 
       final full = await GemmaService.instance.generate(
         prompt,
+        // Pass the currently-attached image, if any. Service is fine with null.
+        imageBytes: _imageBytes,
         // This callback fires once per token. We append to _response and call
         // setState so the UI rebuilds. setState is cheap; doing it per-token
         // is fine for a 2B model emitting ~10-30 tokens/sec.
@@ -181,6 +197,46 @@ class _GemmaTestScreenState extends State<GemmaTestScreen>
     } catch (e) {
       _setResponse('Generate failed: $e');
     }
+  }
+
+  // Open the system gallery and let the user pick an image. After selection
+  // we read the bytes into memory and update state. setState triggers a
+  // rebuild that shows the thumbnail.
+  //
+  // We resize aggressively (maxWidth: 1024) for two reasons:
+  //   1. Saves RAM — a 12MP camera photo is ~12MB; resized it's ~200KB.
+  //   2. Speeds up the vision encoder's preprocessing meaningfully.
+  // Gemma's vision encoder uses a fixed patch grid internally anyway, so
+  // bigger inputs don't help quality past a point.
+  Future<void> _onAttachImage() async {
+    try {
+      final XFile? file = await _picker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 1024,
+        imageQuality: 85, // 0-100, JPEG quality. 85 is the standard sweet spot.
+      );
+
+      // User cancelled the picker — file is null, we do nothing.
+      if (file == null) return;
+
+      final bytes = await file.readAsBytes();
+      if (!mounted) return; // guard: widget gone while we awaited bytes
+
+      setState(() {
+        _imageBytes = bytes;
+        _imageName = file.name;
+      });
+    } catch (e) {
+      _setResponse('Image picker failed: $e');
+    }
+  }
+
+  // Clear the attached image. Tapped from the thumbnail's X button.
+  void _onClearImage() {
+    setState(() {
+      _imageBytes = null;
+      _imageName = null;
+    });
   }
 
   // Helper to update _response inside setState. setState is what tells
@@ -258,8 +314,54 @@ class _GemmaTestScreenState extends State<GemmaTestScreen>
                   onPressed: _onGenerate,
                   child: const Text('3. Generate'),
                 ),
+                ElevatedButton.icon(
+                  onPressed: _onAttachImage,
+                  icon: const Icon(Icons.image),
+                  label: const Text('4. Attach Image'),
+                ),
               ],
             ),
+            // Thumbnail of the currently-attached image. Only rendered when
+            // an image is selected (else null is returned and Flutter skips).
+            // We wrap it in Padding so it has breathing room from the buttons.
+            if (_imageBytes != null) ...[
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.grey.shade400),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    // Image.memory renders raw bytes — no file path, no
+                    // network fetch. Perfect for what we have in memory.
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(4),
+                      child: Image.memory(
+                        _imageBytes!,
+                        width: 64,
+                        height: 64,
+                        fit: BoxFit.cover,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        _imageName ?? 'attached image',
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close),
+                      onPressed: _onClearImage,
+                      tooltip: 'Remove image',
+                    ),
+                  ],
+                ),
+              ),
+            ],
             const SizedBox(height: 16),
 
             // Prompt input.

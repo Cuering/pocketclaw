@@ -35,6 +35,15 @@ abstract class GemmaConfig {
   // the Dart FFI LiteRT-LM client.
 
   static const ModelFileType fileType = ModelFileType.litertlm;
+  // Enable Gemma 4's vision modality at the engine level. Without this,
+  // flutter_gemma silently strips image bytes from Message.withImage(...)
+  // calls — only the text portion reaches the model, which then asks
+  // "please provide the image." Same class of bug as the Day-2 fileType
+  // default. Always-on for PocketClaw since multimodal is core to v1.
+  static const bool supportImage = true;
+  // Max number of images per turn. We send at most one per generate() call.
+  // Higher = more KV cache memory reserved up front.
+  static const int maxNumImages = 1;
   // Max tokens the model can produce in one response. 2048 is a sensible
   // default — long enough for paragraphs, short enough not to hang the UI.
   // We can tune this later per-screen if needed.

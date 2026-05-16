@@ -130,6 +130,11 @@ class GemmaService {
       _model = await fg.FlutterGemma.getActiveModel(
         maxTokens: GemmaConfig.maxTokens,
         preferredBackend: GemmaConfig.preferredBackend,
+        // Enable Gemma 4 vision. Without these, image bytes from
+        // Message.withImage(...) are silently dropped — model receives
+        // text-only prompt and asks "please provide the image."
+        supportImage: GemmaConfig.supportImage,
+        maxNumImages: GemmaConfig.maxNumImages,
       );
 
       _state.value = GemmaState.ready;
@@ -145,6 +150,11 @@ class GemmaService {
   // in a later iteration once this works end-to-end.
   Future<String> generate(
     String prompt, {
+    // Optional image attachment. When supplied, we send a multimodal query
+    // (image + text) and Gemma's vision encoder processes the image first.
+    // Pass null (default) for text-only prompts — keeps existing call sites
+    // working without changes.
+    Uint8List? imageBytes,
     void Function(String chunk)? onToken,
   }) async {
     final model = _model;
@@ -164,9 +174,20 @@ class GemmaService {
           'detailed when the user clearly wants depth, code when code is asked for. '
           'Prefer plain answers over preambles; never restate the question. '
           'If unsure, say so briefly rather than padding.';
-      await chat.addQueryChunk(
-        fg.Message.text(text: '$systemPreamble\n\nUser: $prompt', isUser: true),
-      );
+      final fullPrompt = '$systemPreamble\n\nUser: $prompt';
+      if (imageBytes != null) {
+        await chat.addQueryChunk(
+          fg.Message.withImage(
+            text: fullPrompt,
+            imageBytes: imageBytes,
+            isUser: true,
+          ),
+        );
+      } else {
+        await chat.addQueryChunk(
+          fg.Message.text(text: fullPrompt, isUser: true),
+        );
+      }
       // Buffer to assemble the full response. We append to this as chunks
       // arrive, and return it at the end so callers that want the whole
       // string still get it.
