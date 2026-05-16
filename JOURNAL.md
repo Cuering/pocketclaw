@@ -158,3 +158,76 @@ Full debugging playbook captured in `docs/debugging-playbook.md`.
 ✅ Service layer tested end-to-end with real model
 ⏭ Day 3: image input (multimodal Gemma), bottom-sheet chat UI, follow-up
   Q&A. With the model working, the rest is "just" Flutter UI work.
+
+  ---
+
+## Day 3a — May 16, evening IST (perf + system prompt)
+
+After a 2-day gap (May 15 was a rest day), came back to find an honest
+problem with the working app: short prompts felt fine but anything
+that asked the model to write code or explain something at length took
+literally minutes and ended in mid-sentence truncation. The `flutter_gemma`
+log helpfully told the story.
+
+### What the logs actually proved
+
+The plugin's debug output (added to verify the routing fix from Day 2)
+ended up doing double duty as a perf profiler:
+
+- All four LiteRT-LM model graphs (decode, prefill_1024, prefill_128, verify)
+  had **100% of nodes delegated to LITERT_CL** — i.e. running on the Adreno
+  GPU via OpenCL. So the slowness wasn't a silent CPU fallback.
+- Engine init: ~7 seconds. Normal for loading 2.4 GB and JIT-compiling shaders.
+- Decode throughput: ~7-8 tokens/sec sustained on Gemma 4 E2B.
+- Real cause of the "5 minute" feel: a) `maxTokens: 2048` letting the model
+  write essays, b) the non-streaming `generateChatResponse()` blocking the
+  UI until the entire response arrived, c) no system prompt biasing toward
+  concise replies.
+
+One small inefficiency surfaced: `libLiteRtTopKOpenClSampler.so` and
+`libLiteRtTopKWebGpuSampler.so` are both missing from the APK, so the
+sampler falls back to CPU even though the inference is GPU. ~10-15%
+potential speedup left on the table. Documented for v2.
+
+### Three changes
+
+1. **Streaming**. Switched `generate()` to `generateChatResponseAsync()`
+   and a callback (`onToken`) so the UI updates token-by-token. Total
+   wall-clock is unchanged; perceived latency drops dramatically because
+   the user sees the response forming live.
+2. **`maxTokens: 2048` → 1024**. Safety net only. Worst-case wall time
+   roughly cut in half. Real steering happens in the system prompt.
+3. **Adaptive system prompt**. First attempt was rule-based ("1-3 short
+   paragraphs, one code example not three"). It worked for the exact prompt
+   I tested with, but was brittle — it would refuse to give 3 implementations
+   when the user explicitly asked for 3. Rewrote to describe character
+   instead of rules: "match your answer length to the question; prefer plain
+   answers over preambles; never restate the question." The model adapts
+   per-request now.
+
+### Numbers, before/after
+
+Same prompt: *"Write a Python function that reverses a string, with three
+different implementations."*
+
+|                              | Tokens | Wall time | Throughput | Output quality   |
+|------------------------------|--------|-----------|------------|------------------|
+| Day 2 (no streaming, no SP)  | 1001   | 139s      | 7.2 tok/s  | Truncated mid-sentence |
+| 3a, first SP attempt         | 132    | 15s       | 8.3 tok/s  | Only 1 impl (wrong) |
+| 3a, adaptive SP              | 256    | 29s       | 8.5 tok/s  | Clean 3 implementations |
+
+The "first SP attempt" row is the cautionary tale: a rule-based prompt
+that solved the over-talkative case but broke the "user actually wants
+detail" case. The adaptive version is the one I'd ship.
+
+### Lesson
+
+System prompts should describe *character*, not rules. Rules collapse the
+moment the user's request doesn't match the rule. Character generalizes.
+
+### End-of-day state
+
+✅ Streaming UI — tokens appear in real time
+✅ Adaptive system prompt — model length-matches the question
+✅ 7-8 tok/s sustained on Adreno GPU, on a sub-$300 phone, fully offline
+⏭ Image input (multimodal Gemma 4) next.
