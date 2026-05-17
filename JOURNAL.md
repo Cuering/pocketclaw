@@ -335,3 +335,60 @@ This is the second time the answer was "the plugin has a `supportX` / `useX` / `
 - ✅ One 30-second screen recording captured for the demo video reel
 - ⏭ Day 4 (May 17): floating overlay bubble via `flutter_overlay_window`. Genuinely tricky Android work — different isolate from the main app, permission flow for SYSTEM_ALERT_WINDOW. Going in fresh.
 
+
+---
+
+## Day 4 — May 17, evening IST (overlay bubble)
+
+Goal locked at start of session: **just** the overlay bubble. No screen
+capture wiring, no chat UI rework. Just: tap a button → permission flow →
+draggable circle floats over WhatsApp.
+
+We hit the goal. Cleanly, without drama, in under an hour of actual code.
+
+### Stack
+
+- `flutter_overlay_window: ^0.5.0`
+- Manifest: `SYSTEM_ALERT_WINDOW`, `FOREGROUND_SERVICE_SPECIAL_USE`,
+  + `OverlayService` registration with `foregroundServiceType="specialUse"`
+- Two new top-level declarations in `lib/main.dart`:
+  - `@pragma("vm:entry-point") void overlayMain()` — the second isolate's
+    entry function. Without the pragma, Dart's tree-shaker would strip it.
+  - `_ClawBubble` widget — a transparent Material wrapping a 64px indigo
+    circle with a 🐾 placeholder glyph.
+- Two diagnostic buttons (`5. Show Overlay`, `6. Hide Overlay`) + handlers
+  that gate on `FlutterOverlayWindow.isPermissionGranted()` and route to
+  `requestPermission()` first if needed.
+
+### Verified
+
+- Permission flow: tap → Android settings page → toggle ON → come back →
+  re-tap → bubble appears.
+- Drag works.
+- Bubble persists when switching to WhatsApp.
+- Hide button cleanly removes the overlay.
+
+### What's NOT done (intentionally)
+
+- Bubble has no tap handler yet. Tapping it currently does nothing.
+- Bubble can't talk to the main app. Day 5 will wire `SendPort` between
+  the two isolates.
+- The 🐾 is a placeholder. Real visual identity comes with Day 6 UI work.
+
+### Mental model worth remembering
+
+The overlay runs in a **separate Dart isolate** from the main app. That
+means:
+- It cannot read `GemmaService.instance` directly.
+- State, singletons, providers — none of them are shared.
+- Communication is via `SendPort` message passing (Day 5).
+
+Mistakenly treating the overlay as "just another widget in my app" is the
+default mental error. It's not. It's a different program that happens to
+share the same APK.
+
+### End of day
+
+- ✅ Bubble works end-to-end on Nord
+- ✅ Permission flow works
+- ⏭ Day 5: cross-isolate comms + Android screen capture (MediaProjection)

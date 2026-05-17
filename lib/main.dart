@@ -5,10 +5,66 @@
 // minimal "did Gemma work?" harness.
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:flutter_gemma/flutter_gemma.dart';
 
 import 'services/gemma_service.dart';
+
+// Entry point for the OVERLAY isolate. Android launches this in a separate
+// Dart VM when FlutterOverlayWindow.showOverlay() runs. It's a complete
+// second Flutter app that paints into the floating window — it can't see
+// state or singletons from the main app's isolate.
+//
+// @pragma("vm:entry-point") prevents Dart's tree-shaker from stripping this
+// function. Without it, the function would be dead-code-eliminated and
+// Android would fail to invoke it at runtime.
+@pragma("vm:entry-point")
+void overlayMain() {
+  runApp(
+    const MaterialApp(debugShowCheckedModeBanner: false, home: _ClawBubble()),
+  );
+}
+
+// The bubble itself. Lives in the overlay isolate — keep it dumb and
+// self-contained. No service calls, no shared state with the main app.
+// Day 5 work: add a tap handler that sends a message back to the main
+// isolate to start the screen-capture flow.
+class _ClawBubble extends StatelessWidget {
+  const _ClawBubble();
+
+  @override
+  Widget build(BuildContext context) {
+    // Material is required even in the overlay isolate (Flutter uses
+    // material defaults under the hood). We keep it transparent so the
+    // background-app pixels show through everywhere except the bubble.
+    return Material(
+      color: Colors.transparent,
+      child: Center(
+        child: Container(
+          width: 64,
+          height: 64,
+          decoration: BoxDecoration(
+            color: Colors.indigo,
+            shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.25),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          // Placeholder glyph. Day 6 UI work replaces this with the
+          // actual Claw mark.
+          child: const Center(
+            child: Text('🐾', style: TextStyle(fontSize: 28)),
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 // `main` is now async because flutter_gemma's setup is async.
 // Dart allows `Future<void> main()` as the entry point.
@@ -251,6 +307,63 @@ class _GemmaTestScreenState extends State<GemmaTestScreen>
     setState(() => _response = text);
   }
 
+  // Show the floating overlay bubble. First time: requests permission,
+  // which opens Android's "Display over other apps" settings page. After
+  // the user toggles us on, they have to come back and tap this again.
+  Future<void> _onShowOverlay() async {
+    try {
+      // isPermissionGranted() returns a Future<bool>. nullable on some
+      // versions — coerce to false if null.
+      final granted = (await FlutterOverlayWindow.isPermissionGranted());
+      if (!granted) {
+        // Opens system settings. Returns once the user comes back.
+        // We don't get a callback for "permission granted" specifically —
+        // user has to retap our button after granting.
+        await FlutterOverlayWindow.requestPermission();
+        if (!mounted) return;
+        _setResponse(
+          'Permission requested. Toggle PocketClaw on in the settings '
+          'page Android just opened, then come back and tap "5. Show '
+          'Overlay" again.',
+        );
+        return;
+      }
+
+      // Permission already granted (or just got granted on this run).
+      // Show the bubble. enableDrag lets the user drag it around.
+      // height/width are in pixels; the bubble widget inside is the
+      // visible part, surrounded by a transparent hit area.
+      await FlutterOverlayWindow.showOverlay(
+        enableDrag: true,
+        height: 100,
+        width: 100,
+        alignment: OverlayAlignment.centerRight,
+        overlayTitle: 'PocketClaw',
+        overlayContent: 'Claw is listening',
+        flag: OverlayFlag.defaultFlag,
+        positionGravity: PositionGravity.auto,
+      );
+      if (!mounted) return;
+      _setResponse(
+        'Overlay shown. Drag the bubble around. Try switching to another '
+        'app — the bubble should stay on top. (Tap not wired yet — Day 5.)',
+      );
+    } catch (e) {
+      _setResponse('Overlay failed: $e');
+    }
+  }
+
+  // Hide the floating bubble. Useful for the demo and for clean shutdown.
+  Future<void> _onHideOverlay() async {
+    try {
+      await FlutterOverlayWindow.closeOverlay();
+      if (!mounted) return;
+      _setResponse('Overlay closed.');
+    } catch (e) {
+      _setResponse('Hide overlay failed: $e');
+    }
+  }
+
   // ── UI ─────────────────────────────────────────────────────────────────
 
   @override
@@ -318,6 +431,16 @@ class _GemmaTestScreenState extends State<GemmaTestScreen>
                   onPressed: _onAttachImage,
                   icon: const Icon(Icons.image),
                   label: const Text('4. Attach Image'),
+                ),
+                ElevatedButton.icon(
+                  onPressed: _onShowOverlay,
+                  icon: const Icon(Icons.bubble_chart),
+                  label: const Text('5. Show Overlay'),
+                ),
+                ElevatedButton.icon(
+                  onPressed: _onHideOverlay,
+                  icon: const Icon(Icons.close),
+                  label: const Text('6. Hide Overlay'),
                 ),
               ],
             ),
