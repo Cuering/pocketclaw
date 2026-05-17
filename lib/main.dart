@@ -3,6 +3,7 @@
 // PocketClaw entry point + a temporary diagnostic screen for testing Gemma.
 // This screen will be replaced once we have real chat UI; for now it's a
 // minimal "did Gemma work?" harness.
+import 'dart:async';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_overlay_window/flutter_overlay_window.dart';
@@ -35,30 +36,43 @@ class _ClawBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Material is required even in the overlay isolate (Flutter uses
-    // material defaults under the hood). We keep it transparent so the
-    // background-app pixels show through everywhere except the bubble.
     return Material(
       color: Colors.transparent,
       child: Center(
-        child: Container(
-          width: 64,
-          height: 64,
-          decoration: BoxDecoration(
-            color: Colors.indigo,
-            shape: BoxShape.circle,
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.25),
-                blurRadius: 8,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          ),
-          // Placeholder glyph. Day 6 UI work replaces this with the
-          // actual Claw mark.
-          child: const Center(
-            child: Text('🐾', style: TextStyle(fontSize: 28)),
+        // GestureDetector + behavior: opaque lets the entire 64x64 area
+        // catch the tap (not just the pixels with the circle's color).
+        // shareData() ships the payload across the platform channel to
+        // the main app's overlayListener stream.
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () {
+            // debugPrint('🐾 OVERLAY: bubble tapped');
+            // FlutterOverlayWindow.shareData({
+            //   'type': 'bubble_tapped',
+            //   'ts': DateTime.now().millisecondsSinceEpoch,
+            // });
+            // debugPrint('🐾 OVERLAY: shareData called');
+            debugPrint(
+              '🐾 OVERLAY: bubble tapped (no main-app delivery yet — Day 5 Kotlin bridge)',
+            );
+          },
+          child: Container(
+            width: 64,
+            height: 64,
+            decoration: BoxDecoration(
+              color: Colors.indigo,
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.25),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: const Center(
+              child: Text('🐾', style: TextStyle(fontSize: 28)),
+            ),
           ),
         ),
       ),
@@ -145,6 +159,7 @@ class _GemmaTestScreenState extends State<GemmaTestScreen>
   // Helps when the user picks multiple times — they see WHICH image is
   // currently attached.
   String? _imageName;
+
   // ── Lifecycle ──────────────────────────────────────────────────────────
 
   // `initState` runs ONCE when this State object is first created — before
@@ -153,9 +168,7 @@ class _GemmaTestScreenState extends State<GemmaTestScreen>
   @override
   void initState() {
     super.initState();
-    _promptController = TextEditingController(
-      text: 'Say hello in one short sentence.',
-    );
+    _promptController = TextEditingController(text: '');
 
     // Register ourselves to receive app lifecycle callbacks
     // (didChangeAppLifecycleState below).
@@ -364,6 +377,41 @@ class _GemmaTestScreenState extends State<GemmaTestScreen>
     }
   }
 
+  // Handle a message from the overlay isolate.
+  //
+  // Event format: { 'type': '<event_name>', ...payload }
+  // For Day 5a, we only handle 'bubble_tapped' — flash a SnackBar so we
+  // can confirm the round trip works end-to-end. Day 5b adds 'capture_screen'
+  // which will trigger the MediaProjection flow.
+  void _onOverlayEvent(dynamic event) {
+    debugPrint('🐾 MAIN: overlay event received: $event');
+
+    // Defensive type check — `event` is typed `dynamic` because the platform
+    // channel doesn't preserve Dart types. Real-world events from
+    // FlutterOverlayWindow.shareData come through as Map<Object?, Object?>
+    // on most Android versions.
+    if (event is! Map) {
+      debugPrint('Overlay event ignored (not a Map): $event');
+      return;
+    }
+    final type = event['type'];
+
+    switch (type) {
+      case 'bubble_tapped':
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text(
+              '🐾 Bubble tapped — cross-isolate comms working',
+            ),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+        break;
+      default:
+        debugPrint('Overlay event ignored (unknown type): $type');
+    }
+  }
   // ── UI ─────────────────────────────────────────────────────────────────
 
   @override

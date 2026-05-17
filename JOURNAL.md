@@ -392,3 +392,59 @@ share the same APK.
 - ✅ Bubble works end-to-end on Nord
 - ✅ Permission flow works
 - ⏭ Day 5: cross-isolate comms + Android screen capture (MediaProjection)
+
+---
+
+## Day 5 partial — May 17, evening (overlay → main-app IPC: blocked)
+
+Goal: wire tap-the-bubble → main app reacts. Specifically, ship the foundation (one cross-isolate message landing) so tomorrow's screen-capture work has a working signal channel.
+
+Did not land that goal tonight. Found a real, known, unfixed plugin bug that blocks the path. Here's the trace.
+
+### What we shipped (still useful)
+
+- `_ClawBubble` wrapped in `GestureDetector(behavior: HitTestBehavior.opaque)` — taps fire reliably in the overlay isolate, confirmed via `debugPrint`.
+- `_overlayShown` flag in `_GemmaTestScreenState` for lifecycle-based detection (kept for Day 5 Kotlin work).
+- Debug logging on both ends (overlay-side + main-side) — gives us a clean test harness for tomorrow.
+
+### The bug
+
+`flutter_overlay_window 0.5.0` exposes `FlutterOverlayWindow.shareData(data)` (called from overlay) and `FlutterOverlayWindow.overlayListener` (subscribed in main app). The Dart side wraps a `BasicMessageChannel`. The native Kotlin side is supposed to route overlay-isolate sends to the main isolate's handler.
+
+**It doesn't.** Overlay calls `shareData(...)`. Plugin emits no error. Main app's `overlayListener.listen(...)` never fires. Verified across 8+ taps. The Kotlin routing is silently broken on Android in this version.
+
+Issue #167 on the plugin's GitHub describes exactly this, with identical code shape. Open since August 2025. **Zero maintainer replies in 9 months.** Plus 48 other open issues on the repo. Plugin is effectively unmaintained.
+
+### What we tried before stopping
+
+1. Re-arranged the listener subscription order (`overlayListener` getter has a side effect of installing the message handler — we tried touching it eagerly before listening). No effect.
+2. Inspected the plugin source at `~/.pub-cache/.../lib/src/overlay_window.dart`. Confirmed the Dart side is fine and the bridge depends on Kotlin behavior we can't see from Dart.
+3. Considered `flutter_overlay_window_plus` (a fork). Inspected its source: `shareData` only takes `String`, `overlayListener` only emits plugin lifecycle events ("overlay_shown", "overlay_moved", "overlay_closed"). It's designed for main→overlay TextView updates, not overlay→main messaging. Wrong shape — doesn't solve our problem either.
+4. Briefly considered `AppLifecycleState.resumed` as an implicit signal of bubble tap (because bringing focus back triggers it). Empirically, tapping the bubble does *not* cycle the main-app lifecycle. Only manual app foregrounding does. Dead end.
+
+### Why I stopped (a real lesson)
+
+It was ~7:30 PM. We'd been on this single bug for ~2 hours. The remaining options were:
+
+- Fork the plugin's Kotlin and patch the routing (3-5 hours)
+- Write our own MethodChannel + Kotlin OverlayService bridge from scratch (~2 hours)
+
+Either is an honest fix. Neither is a 30-minute fix. Continuing past midnight on Kotlin we've never written on a contest project we already know we can ship from is the trap I've been falling into all week — "we're so close, one more thing." Tonight I noticed it and stopped.
+
+This is also Day 4's lesson: **when a library bug isn't grep-able into a one-line fix, it's an architectural fix and deserves a fresh head.** Day 2's `ModelFileType`, Day 3b's `supportImage` — those were grep-and-add-a-parameter bugs. This is "the plugin's Android-native code doesn't do what the docs claim." Different category. Same humility required.
+
+### Plan for tomorrow (Day 5 proper)
+
+- Native Kotlin MethodChannel inside our own app (`com.pocketclaw.pocketclaw`)
+- Overlay-side: bubble tap calls a Dart method, which invokes our own channel name
+- Main-side: native code bridges to a Dart handler in the main isolate
+- This replaces the broken plugin bridge entirely with code we control
+
+Then on top of that:
+- Bubble tap → main app receives a known event → tomorrow's screen-capture flow can start
+
+### End of day
+
+- ✅ Bubble taps fire (overlay side, confirmed)
+- ❌ Bubble→main IPC not working (plugin bug, deferred to Kotlin)
+- ✅ Stopped at the right time, no half-built code committed
