@@ -3,8 +3,10 @@
 // PocketClaw entry point + a temporary diagnostic screen for testing Gemma.
 // This screen will be replaced once we have real chat UI; for now it's a
 // minimal "did Gemma work?" harness.
+import 'dart:isolate';
 import 'dart:async';
 import 'dart:typed_data';
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 import 'package:image_picker/image_picker.dart';
@@ -12,6 +14,10 @@ import 'package:flutter_gemma/flutter_gemma.dart';
 
 import 'services/gemma_service.dart';
 
+// Shared port name used by both isolates to find each other through
+// IsolateNameServer. Must be unique-ish across the device (it's the key
+// in a process-wide registry). Prefix with the app id to avoid collisions.
+const String kMainPortName = 'pocketclaw_main_port';
 // Entry point for the OVERLAY isolate. Android launches this in a separate
 // Dart VM when FlutterOverlayWindow.showOverlay() runs. It's a complete
 // second Flutter app that paints into the floating window — it can't see
@@ -22,6 +28,10 @@ import 'services/gemma_service.dart';
 // Android would fail to invoke it at runtime.
 @pragma("vm:entry-point")
 void overlayMain() {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  DartPluginRegistrant.ensureInitialized();
+
   runApp(
     const MaterialApp(debugShowCheckedModeBanner: false, home: _ClawBubble()),
   );
@@ -46,15 +56,28 @@ class _ClawBubble extends StatelessWidget {
         child: GestureDetector(
           behavior: HitTestBehavior.opaque,
           onTap: () {
-            // debugPrint('🐾 OVERLAY: bubble tapped');
-            // FlutterOverlayWindow.shareData({
-            //   'type': 'bubble_tapped',
-            //   'ts': DateTime.now().millisecondsSinceEpoch,
-            // });
-            // debugPrint('🐾 OVERLAY: shareData called');
-            debugPrint(
-              '🐾 OVERLAY: bubble tapped (no main-app delivery yet — Day 5 Kotlin bridge)',
+            debugPrint('🐾 OVERLAY: bubble tapped');
+
+            // Look up the main app's port by name. Returns null if the main app
+            // isn't registered (e.g. it was killed). Without this guard, .send()
+            // on a null port would throw a NoSuchMethodError.
+            final SendPort? mainPort = IsolateNameServer.lookupPortByName(
+              kMainPortName,
             );
+
+            if (mainPort == null) {
+              debugPrint(
+                '🐾 OVERLAY: main port not found — is the app running?',
+              );
+              return;
+            }
+
+            // Send a structured message. Pure Dart — goes straight through
+            // IsolateNameServer's in-process pipe, no platform channel involved.
+            mainPort.send({
+              'type': 'bubble_tapped',
+              'ts': DateTime.now().millisecondsSinceEpoch,
+            });
           },
           child: Container(
             width: 64,
@@ -160,7 +183,13 @@ class _GemmaTestScreenState extends State<GemmaTestScreen>
   // currently attached.
   String? _imageName;
 
-  // ── Lifecycle ──────────────────────────────────────────────────────────
+  // ReceivePort for messages from the overlay isolate. We register its
+  // SendPort with IsolateNameServer so the overlay can look it up by name
+  // and send messages directly. This bypasses the broken shareData bridge
+  // in flutter_overlay_window 0.5.0 (issue #22 in the plugin's repo).
+  ReceivePort? _mainReceivePort;
+  StreamSubscription<dynamic>?
+  _mainPortSubscription; // ── Lifecycle ──────────────────────────────────────────────────────────
 
   // `initState` runs ONCE when this State object is first created — before
   // the first `build()` call. Use it for: creating controllers, registering
@@ -168,11 +197,33 @@ class _GemmaTestScreenState extends State<GemmaTestScreen>
   @override
   void initState() {
     super.initState();
+    debugPrint('🐾 MAIN: initState');
+
     _promptController = TextEditingController(text: '');
 
     // Register ourselves to receive app lifecycle callbacks
     // (didChangeAppLifecycleState below).
     WidgetsBinding.instance.addObserver(this);
+    // Set up the IsolateNameServer port for receiving overlay events.
+    // 1. Create a new ReceivePort (it's a Stream<dynamic> of messages).
+    // 2. Register its SendPort with a known name so the overlay can find it.
+    // 3. Listen for messages and dispatch to our handler.
+    //
+    // We unregister any previous binding first because hot restart can leave
+    // a stale registration behind, which causes registerPortWithName to fail.
+    IsolateNameServer.removePortNameMapping(kMainPortName);
+
+    _mainReceivePort = ReceivePort();
+    final registered = IsolateNameServer.registerPortWithName(
+      _mainReceivePort!.sendPort,
+      kMainPortName,
+    );
+    debugPrint('🐾 MAIN: registered port "$kMainPortName" = $registered');
+
+    _mainPortSubscription = _mainReceivePort!.listen((message) {
+      debugPrint('🐾 MAIN: received via ReceivePort: $message');
+      _onOverlayEvent(message);
+    });
   }
 
   // `dispose` runs ONCE when this State object is removed (screen closed,
@@ -181,6 +232,12 @@ class _GemmaTestScreenState extends State<GemmaTestScreen>
   // #1 cause of Flutter memory leaks.
   @override
   void dispose() {
+    // Cancel subscriptions first (no more events get processed).
+    _mainPortSubscription?.cancel();
+    // Close the ReceivePort to release native resources.
+    _mainReceivePort?.close();
+    // Remove the named registration so a fresh restart won't see a stale port.
+    IsolateNameServer.removePortNameMapping(kMainPortName);
     WidgetsBinding.instance.removeObserver(this);
     _promptController.dispose();
     super.dispose();
@@ -353,8 +410,10 @@ class _GemmaTestScreenState extends State<GemmaTestScreen>
         alignment: OverlayAlignment.centerRight,
         overlayTitle: 'PocketClaw',
         overlayContent: 'Claw is listening',
-        flag: OverlayFlag.defaultFlag,
+        flag: OverlayFlag.focusPointer,
         positionGravity: PositionGravity.auto,
+
+        visibility: NotificationVisibility.visibilityPublic,
       );
       if (!mounted) return;
       _setResponse(
@@ -383,34 +442,21 @@ class _GemmaTestScreenState extends State<GemmaTestScreen>
   // For Day 5a, we only handle 'bubble_tapped' — flash a SnackBar so we
   // can confirm the round trip works end-to-end. Day 5b adds 'capture_screen'
   // which will trigger the MediaProjection flow.
-  void _onOverlayEvent(dynamic event) {
+  void _onOverlayEvent(Map event) {
     debugPrint('🐾 MAIN: overlay event received: $event');
+    if (!mounted) return;
 
     // Defensive type check — `event` is typed `dynamic` because the platform
     // channel doesn't preserve Dart types. Real-world events from
     // FlutterOverlayWindow.shareData come through as Map<Object?, Object?>
     // on most Android versions.
-    if (event is! Map) {
-      debugPrint('Overlay event ignored (not a Map): $event');
-      return;
-    }
-    final type = event['type'];
 
-    switch (type) {
-      case 'bubble_tapped':
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text(
-              '🐾 Bubble tapped — cross-isolate comms working',
-            ),
-            duration: const Duration(seconds: 2),
-          ),
-        );
-        break;
-      default:
-        debugPrint('Overlay event ignored (unknown type): $type');
-    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Text('🐾 Bubble tapped — cross-isolate comms working'),
+        duration: const Duration(seconds: 10),
+      ),
+    );
   }
   // ── UI ─────────────────────────────────────────────────────────────────
 
