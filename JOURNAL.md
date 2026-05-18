@@ -448,3 +448,51 @@ Then on top of that:
 - ✅ Bubble taps fire (overlay side, confirmed)
 - ❌ Bubble→main IPC not working (plugin bug, deferred to Kotlin)
 - ✅ Stopped at the right time, no half-built code committed
+
+## Day 5b — Screen capture working (with caveats) — Mon May 18 evening
+
+### What got done
+- Picked `device_screenshot 0.0.8` after vetting and rejecting `media_projection_screenshot` (pre-Android-14, ships transitively broken
+  `media_projection_creator`) and `flutter_overlay_window_plus` (wrong
+  architecture).
+- Patched plugin's build.gradle in pub cache (missing namespace, AGP 8+).
+- Patched plugin's Kotlin in pub cache to register MediaProjection.Callback
+  before createVirtualDisplay (Android 14 requirement).
+- Worked around plugin's void-returning `requestMediaProjection()` with a
+  1500ms delay before `takeScreenshot()`.
+- Verified end-to-end: tap → permission dialog → screenshot bytes in
+  `_imageBytes` → thumbnail renders.
+
+### What didn't
+- Plugin can't capture twice without fresh permission grant. Each capture
+  burns the MediaProjection session. Multi-capture without re-prompting
+  needs a real foreground service that holds projection alive — plugin's
+  service doesn't.
+- Pub-cache patches are brittle. Real fix is a fork. Decision tomorrow.
+
+### What we learned
+- Three MediaProjection plugins fail on Android 14, each at a different
+  layer: pre-Android-14 API (plugin 1), no callback registration
+  (plugin 2), no foreground service lifecycle (plugin 3).
+- Android 14 (Oct 2023) was a breaking change for MediaProjection. The
+  plugin ecosystem hasn't caught up. Any fresh-this-decade Android-14
+  screen capture in Flutter probably means writing the Kotlin or forking
+  an existing plugin.
+- Empty `Log.d` instrumentation in 13 strategic spots is what gave us the
+  diagnosis. Logcat-tailing the plugin's Kotlin is the right tool for this.
+
+### Product decisions locked this evening
+- Bubble is primary. Settings page on/off. Notification is just Android
+  plumbing.
+- Bubble auto-shows once activated, persists across restarts via
+  foreground service.
+- v1 is one-shot capture per permission grant. Multi-capture is Day 6
+  work (fix the plugin or fork).
+
+### Tomorrow (Day 6)
+Pick one of:
+- Fork device_screenshot, fix the namespace + Android 14 callback
+  + per-capture permission, point pubspec at the fork
+- Write our own Kotlin MethodChannel (~150 lines, ref:
+  /android/src/main/kotlin/.../MainActivity.kt)
+- Ship one-shot capture as the v1 demo (user accepts re-prompting)
