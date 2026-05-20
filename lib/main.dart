@@ -3,15 +3,16 @@
 // PocketClaw entry point + a temporary diagnostic screen for testing Gemma.
 // This screen will be replaced once we have real chat UI; for now it's a
 // minimal "did Gemma work?" harness.
-import 'dart:io';
+// import 'dart:io';
 import 'dart:isolate';
 import 'dart:async';
 import 'dart:typed_data';
+// import 'dart:typed_data';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:device_screenshot/device_screenshot.dart';
+// import 'package:device_screenshot/device_screenshot.dart';
 import 'package:flutter_gemma/flutter_gemma.dart';
 
 import 'services/gemma_service.dart';
@@ -190,8 +191,8 @@ class _GemmaTestScreenState extends State<GemmaTestScreen>
   // and send messages directly. This bypasses the broken shareData bridge
   // in flutter_overlay_window 0.5.0 (issue #22 in the plugin's repo).
   ReceivePort? _mainReceivePort;
-  StreamSubscription<dynamic>?
-  _mainPortSubscription; // ── Lifecycle ──────────────────────────────────────────────────────────
+  StreamSubscription<dynamic>? _mainPortSubscription;
+  // ── Lifecycle ──────────────────────────────────────────────────────────
 
   // `initState` runs ONCE when this State object is first created — before
   // the first `build()` call. Use it for: creating controllers, registering
@@ -367,50 +368,6 @@ class _GemmaTestScreenState extends State<GemmaTestScreen>
     });
   }
 
-  Future<void> _onCaptureScreen() async {
-    try {
-      _setResponse('Requesting screen capture permission...');
-
-      // Plugin returns void — fire and forget. The foreground service
-      // starts asynchronously inside the plugin's Kotlin and there's no
-      // Dart-side signal for "service is ready." So we sleep briefly to
-      // give it time to bind before takeScreenshot() tries to use it.
-      DeviceScreenshot.instance.requestMediaProjection();
-      await Future.delayed(const Duration(milliseconds: 1500));
-
-      _setResponse('Capturing screen...');
-
-      debugPrint('🐾 calling takeScreenshot...');
-      final Uri? uri = await DeviceScreenshot.instance.takeScreenshot();
-      debugPrint('🐾 takeScreenshot returned: $uri');
-
-      if (uri == null) {
-        _setResponse(
-          'takeScreenshot returned null — permission may have been denied.',
-        );
-        return;
-      }
-
-      final filePath = uri.toFilePath();
-      final file = File(filePath);
-      if (!await file.exists()) {
-        _setResponse('Screenshot file not found at $filePath');
-        return;
-      }
-
-      final bytes = await file.readAsBytes();
-      if (!mounted) return;
-
-      setState(() {
-        _imageBytes = bytes;
-        _imageName = 'screen_${DateTime.now().millisecondsSinceEpoch}.png';
-      });
-      _setResponse('Screen captured: ${bytes.length} bytes. Thumbnail above.');
-    } catch (e, stack) {
-      debugPrint('Capture screen failed: $e\n$stack');
-      _setResponse('Capture failed: $e');
-    }
-  }
 
   // Helper to update _response inside setState. setState is what tells
   // Flutter "this widget changed, rebuild it." Without setState, the UI
@@ -489,21 +446,11 @@ class _GemmaTestScreenState extends State<GemmaTestScreen>
   // For Day 5a, we only handle 'bubble_tapped' — flash a SnackBar so we
   // can confirm the round trip works end-to-end. Day 5b adds 'capture_screen'
   // which will trigger the MediaProjection flow.
-  void _onOverlayEvent(Map event) {
-    debugPrint('🐾 MAIN: overlay event received: $event');
+  void _onOverlayEvent(dynamic message) {
+    debugPrint('🐾 MAIN: overlay event received: $message');
     if (!mounted) return;
-
-    // Defensive type check — `event` is typed `dynamic` because the platform
-    // channel doesn't preserve Dart types. Real-world events from
-    // FlutterOverlayWindow.shareData come through as Map<Object?, Object?>
-    // on most Android versions.
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Text('🐾 Bubble tapped — cross-isolate comms working'),
-        duration: const Duration(seconds: 10),
-      ),
-    );
+    // Bubble taps currently no-op. Chat UI will hook this up later
+    // to bring the chat to foreground.
   }
   // ── UI ─────────────────────────────────────────────────────────────────
 
@@ -582,11 +529,6 @@ class _GemmaTestScreenState extends State<GemmaTestScreen>
                   onPressed: _onHideOverlay,
                   icon: const Icon(Icons.close),
                   label: const Text('6. Hide Overlay'),
-                ),
-                ElevatedButton.icon(
-                  onPressed: _onCaptureScreen,
-                  icon: const Icon(Icons.screenshot),
-                  label: const Text('7. Capture Screen'),
                 ),
               ],
             ),
