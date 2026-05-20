@@ -496,3 +496,171 @@ Pick one of:
 - Write our own Kotlin MethodChannel (~150 lines, ref:
   /android/src/main/kotlin/.../MainActivity.kt)
 - Ship one-shot capture as the v1 demo (user accepts re-prompting)
+
+## Day 6 — Native Kotlin MediaProjection, hit the Android 14 wall — Mon May 19 evening
+
+### What got done
+- Wrote own ScreenCaptureService.kt (209 lines) + MainActivity MethodChannel
+  + Dart wrapper. Foreground service holds MediaProjection alive, ImageReader
+  with continuous listener pattern, proper Android 14 callback registration.
+- Bypassed three plugin defaults that bit us along the way: intent extras to
+  foreground services unreliable from onActivityResult (fix: static fields on
+  service companion), `-1` sentinel collides with `Activity.RESULT_OK = -1`
+  (fix: nullable `Int?`), VirtualDisplay re-creation forbidden post-Android-14.
+
+### What didn't
+- Multi-shot capture. Period.
+- First capture works: real PNG of current screen, ~1.34 MB. Verified.
+- Captures 2-6 from the bubble: same 1,344,416 bytes every time. The bytes
+  are identical. Android 14 pauses VirtualDisplay frame production after the
+  initial burst and our continuous listener never receives new frames, even
+  when source apps are actively rendering.
+- "Recreate VirtualDisplay" workaround: blocked with explicit
+  SecurityException — Android 14 added a check forbidding multiple
+  createVirtualDisplay calls on one MediaProjection instance.
+
+### What we learned
+- 7+ hours across Day 5b + Day 6 on MediaProjection. The constraint isn't a
+  plugin bug or a code bug — it's OS-level Android 14 behavior that requires
+  fundamentally different architecture (MediaRecorder pipeline or
+  vendor-specific APIs). Multi-day engineering work, not multi-hour.
+- The "I told you I couldn't write Kotlin" story died: 209 lines of
+  foreground service + 100 lines of MethodChannel both compiled and ran.
+  Could read plugin Kotlin to diagnose constraints. Story was wrong.
+
+### Decision
+- Abandoning live screen capture for v1. Will write a "v2 roadmap" line in
+  the dev.to post and keep the Kotlin in repo for engineering depth.
+- Pivot to gallery-screenshot pickup OR remove screen capture entirely.
+  Talked it through Tue morning — decided to drop screen capture from v1
+  entirely (system screenshots → user pastes/uploads → chat).
+
+---
+
+## Day 7 — Pivot, ship a real chat app — Tue May 20
+
+### Context
+After-office work, 7:38 PM start. Goal: kill the screen-capture rabbit hole
+once and for all, build a real chat UI, ship multi-conversation persistence,
+proper error UX, and figure out the RAG path. Hard stop midnight.
+
+### B0 — Cleanup (8:00 PM)
+- Deleted ScreenCaptureService.kt, restored MainActivity.kt to the 3-line
+  default, restored AndroidManifest.xml to its committed state, removed
+  the Dart screen_capture wrapper, removed `device_screenshot` from
+  pubspec, cleaned every reference out of main.dart.
+- Committed.
+
+### B1 — Chat UI + autobootstrap (8:00 → 10:00 PM)
+- New ChatScreen replaces the diagnostic button grid as home.
+- Streaming token-by-token into assistant message bubbles via Gemma's
+  onToken callback. Tokens append to the placeholder bubble in setState.
+- Markdown rendering for assistant responses (flutter_markdown).
+- Image attachment via image_picker, kept the Day 3b vision path working.
+- Conversation memory: serialize history as plain "User: ... / Assistant: ..."
+  text into the prompt each turn (Gemma chat sessions are not reusable
+  per the plugin's `createChat()` semantics — workaround is fine).
+- Compaction stub: drop oldest messages when char-based token estimate
+  exceeds 100K (out of Gemma 4's 128K window). LLM-summarized compaction
+  is a future improvement.
+- max_tokens bumped 1024 → 2048. The "write a short story" test now
+  completes with a period instead of mid-word truncation.
+- GemmaService.init() does the right thing on boot: calls
+  FlutterGemma.initialize(), then always runs install() (which is
+  idempotent — skips download when file exists, but registers the
+  active model spec). Then auto-loads in the background. The UI watches
+  state via ValueListenable<GemmaState> and the banner disappears when
+  ready. No more "install → load → generate" three-tap dance.
+
+### Bug pattern (continued)
+Three new plugin defaults bit us today, same shape as Day 2/3:
+- FlutterGemma.initialize() must be called in main() before runApp.
+  Not optional. Plugin throws `FlutterGemma not initialized` otherwise.
+- isInstalled() returning true means "file on disk", NOT "active inference
+  model set". Load fails with "No active inference model set" until
+  install() is called (which calls setActiveModel internally).
+- install() and load() called in parallel = two copies of 1.5GB native
+  model weights allocated, phone OOMs. Added idempotency guards on both:
+  if already running or already in target state, no-op.
+
+Debugging playbook updated: every silent plugin failure = grep the
+pub-cache for the relevant API + its defaults. Three for three this week.
+
+### B2 — Multi-conversation + Hive (10:15 → 10:55 PM)
+- Conversation model (id via uuid, title, List<Message>, createdAt,
+  updatedAt) serialized as JSON via toJson/fromJson. Skipped Hive
+  TypeAdapter codegen — JSON-in-Box is simpler and ships tonight.
+- Message model extended with toJson/fromJson; image bytes go in as base64.
+- ConversationStore singleton: Hive box keyed by conversation id, sorted
+  by updatedAt desc on read.
+- ConversationListScreen: hamburger from chat opens it, shows all stored
+  conversations sorted newest-first, "+ New chat" at top, tap to switch,
+  long-press to delete with confirm.
+- Auto-title: first non-empty user message becomes the conversation title,
+  capped 60 chars, newlines collapsed.
+- Persistence verified by killing the app + reopening.
+- ChatScreen now accepts an optional Conversation parameter; persists
+  after every completed turn (failures snackbar, exception logged).
+
+### B2.5 — Error UX pass (11:00 → 11:30 PM)
+You called this out: "in my 6 years of IT career, we never expose raw
+exceptions to users." Right. Took the project through three tiers:
+- Tier 1 (prevent): send button now gated on GemmaState.ready/generating.
+  "Model not loaded" exception can no longer fire from user input.
+- Tier 2 (friendly): failed generates render a clean "Claw couldn't
+  finish that" bubble with a Retry button. Banner during load errors:
+  "Couldn't start Claw. Check your connection and try again" + Retry.
+  Image-picker + Hive-save failures surface as snackbars.
+- Tier 3 (logs): every exception still goes to debugPrint with full
+  context for debugging. Users never see Dart class names or stack traces.
+
+Retry plumbing: ChatScreen remembers _lastFailedText + _lastFailedImage,
+the failed bubble renders an onRetry callback that re-runs _handleSend
+with the same args after popping the failed pair from the conversation.
+
+### B3 — RAG verified, design committed (11:30 PM → midnight)
+- Investigated flutter_gemma's RAG support. Surprise: it ships a full
+  first-party RAG stack on Android. EmbeddingModel API, sqlite3-backed
+  vector store with HNSW indexing above 100 documents. Web counterpart
+  uses wa-sqlite + OPFS. Same Dart API both platforms.
+- Plugin's hardcoded EmbeddingModel.gecko110M URL is stale (404). The
+  actual files in the litert-community repo are `Gecko_*_quant.tflite`
+  with different naming. Working URL verified, public (`gated: false`).
+- Tried EmbeddingGemma 300M — repo is `gated: auto`, needs HF token.
+  Picked Gecko 110M for the same reason we picked litert-community's
+  Gemma 4 mirror: no auth, public, symmetric story.
+- Wrote docs/rag-design.md with the full Day 8 plan: extend GemmaConfig,
+  RAG service singleton, chunking strategy (paragraph split, ~300
+  tokens, merge tinies), retrieval-into-prompt format, file picker
+  integration. Zero re-investigation needed Wednesday evening.
+
+### What got committed
+- B0: cleanup
+- B1: chat UI + memory + autobootstrap (10 files, +1323/-670)
+- B2: multi-conv + Hive
+- B2.5: error UX
+- Day 7 end: RAG design doc
+
+### What we learned
+- Scope-as-everything pattern showed up twice tonight ("Path A and Path B
+  both," then "B2.5 and B3 tonight"). Both times the right answer was
+  cut. Once gracefully ahead of schedule (skipping B3 code, shipping
+  design doc instead). Once into a real production-quality fix you
+  flagged (Tier 1+2+3 error handling).
+- Best engineering note of the day came from you: "we should be knowing
+  what error to show and how to present it. In my 6 years of IT career
+  all I learnt is, we should be knowing what error or exception to show
+  how to present it to user and what user has to do." That's the real
+  production instinct showing. Captured in B2.5.
+- Real Day 7 output: a multi-conversation persistent chat app with
+  vision, markdown, conversation memory, autobootstrap, polished error
+  UX, all running on-device on a Snapdragon 7s Gen 3. That's a
+  shippable v1 even if we did nothing else.
+
+### Tomorrow (Day 8, Wed evening)
+- RAG implementation per docs/rag-design.md. ~4 hours fresh.
+- Gecko 110M installer, vector store init, indexing pipeline,
+  retrieval-into-prompt, 📄 attach button, test with a real .txt file
+  on device.
+- Hard stop midnight again.
+
