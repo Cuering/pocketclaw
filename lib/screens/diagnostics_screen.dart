@@ -1,0 +1,476 @@
+// Diagnostic screen — the original button-grid for testing Gemma model
+// install, load, text gen, multimodal, overlay. Kept after pivot to chat
+// UI for debugging. Accessible from the chat screen's overflow menu.
+
+import 'dart:async';
+import 'dart:isolate';
+import 'dart:typed_data';
+import 'dart:ui';
+
+import 'package:flutter/material.dart';
+import 'package:flutter_overlay_window/flutter_overlay_window.dart';
+import 'package:image_picker/image_picker.dart';
+
+import '../services/gemma_service.dart';
+
+// Shared port name used by both isolates to find each other through
+// IsolateNameServer. Mirrors the constant in main.dart.
+const String kMainPortName = 'pocketclaw_main_port';
+
+class DiagnosticsScreen extends StatefulWidget {
+  const DiagnosticsScreen({super.key});
+
+  @override
+  State<DiagnosticsScreen> createState() => _DiagnosticsScreenState();
+}
+
+// The `_` prefix makes this class library-private — no other file can
+// instantiate it directly. Convention for State classes.
+//
+// `with WidgetsBindingObserver` is a MIXIN: it gives this class the methods
+// of WidgetsBindingObserver without inheriting from it. Mixins are how Dart
+// adds capabilities to a class. We use it to observe app lifecycle events.
+class _DiagnosticsScreenState extends State<DiagnosticsScreen>
+    with WidgetsBindingObserver {
+  // Controller for the prompt text field. `late final`:
+  //   `late` = "I'll initialize this before any read, but not in the
+  //             constructor" — needed because we set it up in initState.
+  //   `final` = once initialized, never reassigned.
+  late final TextEditingController _promptController;
+
+  // The latest response from Gemma. Mutable, so plain `String`.
+  // Starts empty; updates via setState.
+  String _response = '';
+  // ImagePicker is the entry point to the gallery/camera plugin.
+  // `final` because we don't replace it; `late` not needed because we
+  // can initialize it inline.
+  final ImagePicker _picker = ImagePicker();
+
+  // Currently-attached image bytes. Null = no image selected.
+  // Uint8List because that's what Gemma's withImage() wants and what
+  // XFile.readAsBytes() returns.
+  Uint8List? _imageBytes;
+
+  // Optional human-readable filename for the thumbnail caption.
+  // Helps when the user picks multiple times — they see WHICH image is
+  // currently attached.
+  String? _imageName;
+
+  // ReceivePort for messages from the overlay isolate. We register its
+  // SendPort with IsolateNameServer so the overlay can look it up by name
+  // and send messages directly. This bypasses the broken shareData bridge
+  // in flutter_overlay_window 0.5.0 (issue #22 in the plugin's repo).
+  ReceivePort? _mainReceivePort;
+  StreamSubscription<dynamic>? _mainPortSubscription;
+  // ── Lifecycle ──────────────────────────────────────────────────────────
+
+  // `initState` runs ONCE when this State object is first created — before
+  // the first `build()` call. Use it for: creating controllers, registering
+  // observers, kicking off any one-time async work.
+  @override
+  void initState() {
+    super.initState();
+    debugPrint('🐾 MAIN: initState');
+
+    _promptController = TextEditingController(text: '');
+
+    // Register ourselves to receive app lifecycle callbacks
+    // (didChangeAppLifecycleState below).
+    WidgetsBinding.instance.addObserver(this);
+    // Set up the IsolateNameServer port for receiving overlay events.
+    // 1. Create a new ReceivePort (it's a Stream<dynamic> of messages).
+    // 2. Register its SendPort with a known name so the overlay can find it.
+    // 3. Listen for messages and dispatch to our handler.
+    //
+    // We unregister any previous binding first because hot restart can leave
+    // a stale registration behind, which causes registerPortWithName to fail.
+    IsolateNameServer.removePortNameMapping(kMainPortName);
+
+    _mainReceivePort = ReceivePort();
+    final registered = IsolateNameServer.registerPortWithName(
+      _mainReceivePort!.sendPort,
+      kMainPortName,
+    );
+    debugPrint('🐾 MAIN: registered port "$kMainPortName" = $registered');
+
+    _mainPortSubscription = _mainReceivePort!.listen((message) {
+      debugPrint('🐾 MAIN: received via ReceivePort: $message');
+      _onOverlayEvent(message);
+    });
+  }
+
+  // `dispose` runs ONCE when this State object is removed (screen closed,
+  // hot-reload, app shutdown). Use it for: tearing down what you set up
+  // in initState. Forgetting to dispose controllers and observers is the
+  // #1 cause of Flutter memory leaks.
+  @override
+  void dispose() {
+    // Cancel subscriptions first (no more events get processed).
+    _mainPortSubscription?.cancel();
+    // Close the ReceivePort to release native resources.
+    _mainReceivePort?.close();
+    // Remove the named registration so a fresh restart won't see a stale port.
+    IsolateNameServer.removePortNameMapping(kMainPortName);
+    WidgetsBinding.instance.removeObserver(this);
+    _promptController.dispose();
+    super.dispose();
+  }
+
+  // Called by Flutter when the app's lifecycle state changes.
+  // For now we just print — we'll add model dispose/reload logic later.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // ignore: avoid_print — fine for diagnostic harness.
+    debugPrint('App lifecycle: $state');
+  }
+
+  // ── Button handlers ────────────────────────────────────────────────────
+
+  // Each handler wraps the service call in try/catch and surfaces errors
+  // into _response so we can SEE what failed instead of just crashing.
+  //
+  // `async` + `await` pattern: the handler is async, the service call is
+  // awaited, and any thrown exception lands in the catch block.
+
+  Future<void> _onInstall() async {
+    try {
+      await GemmaService.instance.install();
+      _setResponse('Install complete.');
+    } catch (e) {
+      _setResponse('Install failed: $e');
+    }
+  }
+
+  Future<void> _onLoad() async {
+    try {
+      await GemmaService.instance.load();
+      _setResponse('Model loaded.');
+    } catch (e) {
+      _setResponse('Load failed: $e');
+    }
+  }
+
+  Future<void> _onGenerate() async {
+    final prompt = _promptController.text.trim();
+    if (prompt.isEmpty) {
+      _setResponse('Type a prompt first.');
+      return;
+    }
+    try {
+      // Reset the response area — tokens will fill it in as they arrive.
+      _setResponse('');
+      // Track start time for the demo-video tokens/sec counter.
+      // DateTime.now() is fine here; we don't need monotonic clock precision.
+      final startedAt = DateTime.now();
+      var tokenCount = 0;
+
+      final full = await GemmaService.instance.generate(
+        prompt,
+        // Pass the currently-attached image, if any. Service is fine with null.
+        imageBytes: _imageBytes,
+        // This callback fires once per token. We append to _response and call
+        // setState so the UI rebuilds. setState is cheap; doing it per-token
+        // is fine for a 2B model emitting ~10-30 tokens/sec.
+        onToken: (chunk) {
+          if (!mounted) {
+            return; // guard: widget may be gone if user navigated away
+          }
+          tokenCount++;
+          setState(() {
+            _response = '$_response$chunk';
+          });
+        },
+      );
+      // After streaming ends, append a tiny perf summary at the bottom.
+      // Useful for the demo video and for tuning later. Remove before final UI.
+      final elapsed = DateTime.now().difference(startedAt);
+      final tps = elapsed.inMilliseconds > 0
+          ? (tokenCount * 1000 / elapsed.inMilliseconds).toStringAsFixed(1)
+          : '∞';
+      if (mounted) {
+        setState(() {
+          _response =
+              '$full\n\n— $tokenCount tok / ${elapsed.inSeconds}s ≈ $tps tok/s';
+        });
+      }
+    } catch (e) {
+      _setResponse('Generate failed: $e');
+    }
+  }
+
+  // Open the system gallery and let the user pick an image. After selection
+  // we read the bytes into memory and update state. setState triggers a
+  // rebuild that shows the thumbnail.
+  //
+  // We resize aggressively (maxWidth: 1024) for two reasons:
+  //   1. Saves RAM — a 12MP camera photo is ~12MB; resized it's ~200KB.
+  //   2. Speeds up the vision encoder's preprocessing meaningfully.
+  // Gemma's vision encoder uses a fixed patch grid internally anyway, so
+  // bigger inputs don't help quality past a point.
+  Future<void> _onAttachImage() async {
+    try {
+      final XFile? file = await _picker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 1024,
+        imageQuality: 85, // 0-100, JPEG quality. 85 is the standard sweet spot.
+      );
+
+      // User cancelled the picker — file is null, we do nothing.
+      if (file == null) return;
+
+      final bytes = await file.readAsBytes();
+      if (!mounted) return; // guard: widget gone while we awaited bytes
+
+      setState(() {
+        _imageBytes = bytes;
+        _imageName = file.name;
+      });
+    } catch (e) {
+      _setResponse('Image picker failed: $e');
+    }
+  }
+
+  // Clear the attached image. Tapped from the thumbnail's X button.
+  void _onClearImage() {
+    setState(() {
+      _imageBytes = null;
+      _imageName = null;
+    });
+  }
+
+
+  // Helper to update _response inside setState. setState is what tells
+  // Flutter "this widget changed, rebuild it." Without setState, the UI
+  // wouldn't refresh even if _response changed.
+  //
+  // `mounted` check: if this widget was removed from the tree (e.g. user
+  // navigated away while we were awaiting), calling setState would crash.
+  // Always guard async setState calls with `if (mounted)`.
+  void _setResponse(String text) {
+    if (!mounted) return;
+    setState(() => _response = text);
+  }
+
+  // Show the floating overlay bubble. First time: requests permission,
+  // which opens Android's "Display over other apps" settings page. After
+  // the user toggles us on, they have to come back and tap this again.
+  Future<void> _onShowOverlay() async {
+    try {
+      // isPermissionGranted() returns a Future<bool>. nullable on some
+      // versions — coerce to false if null.
+      final granted = (await FlutterOverlayWindow.isPermissionGranted());
+      if (!granted) {
+        // Opens system settings. Returns once the user comes back.
+        // We don't get a callback for "permission granted" specifically —
+        // user has to retap our button after granting.
+        await FlutterOverlayWindow.requestPermission();
+        if (!mounted) return;
+        _setResponse(
+          'Permission requested. Toggle PocketClaw on in the settings '
+          'page Android just opened, then come back and tap "5. Show '
+          'Overlay" again.',
+        );
+        return;
+      }
+
+      // Permission already granted (or just got granted on this run).
+      // Show the bubble. enableDrag lets the user drag it around.
+      // height/width are in pixels; the bubble widget inside is the
+      // visible part, surrounded by a transparent hit area.
+      await FlutterOverlayWindow.showOverlay(
+        enableDrag: true,
+        height: 100,
+        width: 100,
+        alignment: OverlayAlignment.centerRight,
+        overlayTitle: 'PocketClaw',
+        overlayContent: 'Claw is listening',
+        flag: OverlayFlag.focusPointer,
+        positionGravity: PositionGravity.auto,
+
+        visibility: NotificationVisibility.visibilityPublic,
+      );
+      if (!mounted) return;
+      _setResponse(
+        'Overlay shown. Drag the bubble around. Try switching to another '
+        'app — the bubble should stay on top. (Tap not wired yet — Day 5.)',
+      );
+    } catch (e) {
+      _setResponse('Overlay failed: $e');
+    }
+  }
+
+  // Hide the floating bubble. Useful for the demo and for clean shutdown.
+  Future<void> _onHideOverlay() async {
+    try {
+      await FlutterOverlayWindow.closeOverlay();
+      if (!mounted) return;
+      _setResponse('Overlay closed.');
+    } catch (e) {
+      _setResponse('Hide overlay failed: $e');
+    }
+  }
+
+  // Handle a message from the overlay isolate.
+  //
+  // Event format: { 'type': '<event_name>', ...payload }
+  // For Day 5a, we only handle 'bubble_tapped' — flash a SnackBar so we
+  // can confirm the round trip works end-to-end. Day 5b adds 'capture_screen'
+  // which will trigger the MediaProjection flow.
+  void _onOverlayEvent(dynamic message) {
+    debugPrint('🐾 MAIN: overlay event received: $message');
+    if (!mounted) return;
+    // Bubble taps currently no-op. Chat UI will hook this up later
+    // to bring the chat to foreground.
+  }
+  // ── UI ─────────────────────────────────────────────────────────────────
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('PocketClaw — Gemma Test')),
+      body: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // State + download progress, watched reactively.
+            // ValueListenableBuilder rebuilds ONLY this subtree when state changes.
+            // Cleaner than wrapping the whole screen in setState.
+            ValueListenableBuilder<GemmaState>(
+              valueListenable: GemmaService.instance.state,
+              builder: (context, state, _) {
+                return Text(
+                  'State: ${state.name}',
+                  style: Theme.of(context).textTheme.titleMedium,
+                );
+              },
+            ),
+            const SizedBox(height: 8),
+            ValueListenableBuilder<int>(
+              valueListenable: GemmaService.instance.downloadProgress,
+              builder: (context, progress, _) {
+                // Only show a progress bar while installing.
+                // `value: null` would make it indeterminate (spinning bar);
+                // we want determinate with the percentage we have.
+                if (progress <= 0 || progress >= 100) {
+                  return const SizedBox.shrink();
+                }
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    LinearProgressIndicator(value: progress / 100),
+                    const SizedBox(height: 4),
+                    Text('Download: $progress%'),
+                    const SizedBox(height: 8),
+                  ],
+                );
+              },
+            ),
+            const Divider(height: 32),
+
+            // Three diagnostic buttons.
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                ElevatedButton(
+                  onPressed: _onInstall,
+                  child: const Text('1. Install'),
+                ),
+                ElevatedButton(
+                  onPressed: _onLoad,
+                  child: const Text('2. Load'),
+                ),
+                ElevatedButton(
+                  onPressed: _onGenerate,
+                  child: const Text('3. Generate'),
+                ),
+                ElevatedButton.icon(
+                  onPressed: _onAttachImage,
+                  icon: const Icon(Icons.image),
+                  label: const Text('4. Attach Image'),
+                ),
+                ElevatedButton.icon(
+                  onPressed: _onShowOverlay,
+                  icon: const Icon(Icons.bubble_chart),
+                  label: const Text('5. Show Overlay'),
+                ),
+                ElevatedButton.icon(
+                  onPressed: _onHideOverlay,
+                  icon: const Icon(Icons.close),
+                  label: const Text('6. Hide Overlay'),
+                ),
+              ],
+            ),
+            // Thumbnail of the currently-attached image. Only rendered when
+            // an image is selected (else null is returned and Flutter skips).
+            // We wrap it in Padding so it has breathing room from the buttons.
+            if (_imageBytes != null) ...[
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.grey.shade400),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    // Image.memory renders raw bytes — no file path, no
+                    // network fetch. Perfect for what we have in memory.
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(4),
+                      child: Image.memory(
+                        _imageBytes!,
+                        width: 64,
+                        height: 64,
+                        fit: BoxFit.cover,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        _imageName ?? 'attached image',
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close),
+                      onPressed: _onClearImage,
+                      tooltip: 'Remove image',
+                    ),
+                  ],
+                ),
+              ),
+            ],
+            const SizedBox(height: 16),
+
+            // Prompt input.
+            TextField(
+              controller: _promptController,
+              decoration: const InputDecoration(
+                labelText: 'Prompt',
+                border: OutlineInputBorder(),
+              ),
+              maxLines: 2,
+            ),
+            const SizedBox(height: 16),
+
+            // Response display — wrapped in Expanded + scroll so long
+            // outputs don't overflow.
+            Text('Response:', style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 8),
+            Expanded(
+              child: SingleChildScrollView(
+                child: SelectableText(
+                  _response.isEmpty ? '(nothing yet)' : _response,
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}

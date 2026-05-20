@@ -69,6 +69,65 @@ class GemmaService {
 
   // Check whether the model file is already on the device.
   // Returns true if installed (from a previous run), false otherwise.
+  /// One-time bootstrap. Call once from main() before runApp().
+  /// Idempotent: safe to call multiple times.
+  ///
+  /// Behaviour:
+  ///   1. Calls FlutterGemma.initialize() to set up the plugin internals.
+  ///   2. Checks if the model file is already on disk.
+  ///   3. If installed, auto-loads it into memory in the background.
+  ///      State transitions installed → loading → ready with no UI taps.
+  ///   4. If not installed, leaves state at notInstalled. UI shows the
+  ///      download button.
+  ///
+  /// Auto-load errors surface via the state ValueListenable (transitions
+  /// to error). Caller does not need to await successful load — UI watches
+  /// state and reacts when it flips to ready.
+  Future<void> init() async {
+    // Step 1: bootstrap the plugin. Per docs, multiple calls are safe.
+    await fg.FlutterGemma.initialize();
+
+    // Step 2: check disk
+    final installed = await isInstalled();
+    if (!installed) {
+      // First-time launch (or fresh install). UI shows the download button;
+      // user taps it, install() runs, then load() runs. We do nothing here.
+      _state.value = GemmaState.notInstalled;
+      return;
+    }
+
+    // Model file is on disk but the plugin has no notion of an "active model"
+    // until install() runs. install() is idempotent: when the file already
+    // exists it skips the download and just calls setActiveModel internally.
+    // So we always run install() to register the file with the plugin, then
+    // load it into memory.
+    //
+    // Net cost on a warm boot (file already present): a few hundred ms.
+    // The user sees the "Loading Claw…" banner during this whole sequence.
+    try {
+      _state.value = GemmaState.installing;
+      await fg.FlutterGemma.installModel(
+        modelType: GemmaConfig.modelType,
+        fileType: GemmaConfig.fileType,
+      ).fromNetwork(GemmaConfig.modelUrl).install();
+
+      _state.value = GemmaState.installed;
+    } catch (e, stack) {
+      _lastError = e;
+      _state.value = GemmaState.error;
+      debugPrint('🐾 GEMMA: init install() failed: $e\n$stack');
+      return;
+    }
+
+    // Step 3: auto-load in the background. We do NOT await — the UI watches
+    // the state ValueListenable and reacts when it flips to ready.
+    // ignore: discarded_futures
+    load().catchError((e, stack) {
+      debugPrint('🐾 GEMMA: auto-load failed: $e\n$stack');
+      // State is already GemmaState.error inside load()'s catch block.
+    });
+  }
+
   Future<bool> isInstalled() async {
     try {
       // flutter_gemma stores models by filename derived from the URL.
@@ -99,6 +158,10 @@ class GemmaService {
   //                        ↓ on error
   //                       error
   Future<void> install() async {
+    if (_state.value == GemmaState.installing) {
+      debugPrint('🐾 GEMMA: install() called while already installing; skipping');
+      return;
+    }
     try {
       _state.value = GemmaState.installing;
       _downloadProgress.value = 0;
@@ -124,6 +187,20 @@ class GemmaService {
   // Load the installed model into memory. Must be called after install().
   // After this returns, state == ready and you can call generate().
   Future<void> load() async {
+    // Idempotency guard: if a load is already in progress, or the model
+    // is already ready, don't kick off a second load. Two concurrent
+    // load() calls allocate two copies of the ~1.5 GB model weights and
+    // OOM the phone. Crash reproduced 2026-05-20.
+    if (_state.value == GemmaState.loading) {
+      debugPrint('🐾 GEMMA: load() called while already loading; skipping');
+      return;
+    }
+    if (_state.value == GemmaState.ready ||
+        _state.value == GemmaState.generating) {
+      debugPrint('🐾 GEMMA: load() called but model already ready; skipping');
+      return;
+    }
+
     try {
       _state.value = GemmaState.loading;
 
