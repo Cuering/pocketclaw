@@ -39,6 +39,9 @@ dependencies:
   flutter_overlay_window: ^0.5.0
   flutter_markdown: ^0.7.7+1
   intl: ^0.20.2
+  hive: ^2.2.3
+  hive_flutter: ^1.1.0
+  uuid: ^4.5.3
 
 dev_dependencies:
   flutter_test:

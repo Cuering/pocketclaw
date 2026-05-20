@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:typed_data';
 
 /// Who sent the message in a conversation.
@@ -32,5 +33,35 @@ class Message {
     text: text ?? this.text,
     imageBytes: imageBytes ?? this.imageBytes,
     timestamp: timestamp,
+  );
+
+  // ── Serialization ─────────────────────────────────────────────────────
+  //
+  // We serialize via plain JSON-compatible Maps rather than Hive TypeAdapters
+  // to avoid the build_runner codegen dependency. The Conversation store
+  // writes the resulting Map as a JSON string into a Hive box.
+  //
+  // Image bytes go in as base64 strings. For a screenshot ~1 MB this
+  // means ~1.3 MB in JSON; fine for a phone, but B3 can switch to writing
+  // bytes to disk + storing a path instead if it becomes a problem.
+
+  Map<String, dynamic> toJson() => {
+    'role': role.name,
+    'text': text,
+    'image': imageBytes != null ? base64Encode(imageBytes!) : null,
+    'ts': timestamp.toIso8601String(),
+  };
+
+  factory Message.fromJson(Map<String, dynamic> json) => Message(
+    role: MessageRole.values.firstWhere(
+      (r) => r.name == json['role'],
+      orElse: () => MessageRole.user,
+    ),
+    text: json['text'] as String? ?? '',
+    imageBytes: json['image'] != null
+        ? base64Decode(json['image'] as String)
+        : null,
+    timestamp:
+        DateTime.tryParse(json['ts'] as String? ?? '') ?? DateTime.now(),
   );
 }
