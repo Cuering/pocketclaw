@@ -3,27 +3,34 @@ import 'package:flutter_markdown/flutter_markdown.dart';
 
 import '../models/message.dart';
 
+/// Sentinel that ChatScreen writes into a message's text field when a
+/// generation fails. The bubble renderer replaces it with a friendly
+/// error UI + a Retry button.
+const String kErrorSentinel = '__CLAW_ERROR__';
+
 /// Renders one message in the chat thread.
-///
-/// User messages: right-aligned, primary-color bubble, plain text.
-/// Assistant messages: left-aligned, surface-color bubble, markdown.
-/// Both: optional image thumbnail on top.
 class MessageBubble extends StatelessWidget {
-  const MessageBubble({super.key, required this.message});
+  const MessageBubble({super.key, required this.message, this.onRetry});
 
   final Message message;
+  final VoidCallback? onRetry;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isUser = message.isUser;
+    final isError = message.text == kErrorSentinel;
 
     final bubbleColor = isUser
         ? theme.colorScheme.primary
-        : theme.colorScheme.surfaceContainerHighest;
+        : isError
+            ? theme.colorScheme.errorContainer
+            : theme.colorScheme.surfaceContainerHighest;
     final textColor = isUser
         ? theme.colorScheme.onPrimary
-        : theme.colorScheme.onSurface;
+        : isError
+            ? theme.colorScheme.onErrorContainer
+            : theme.colorScheme.onSurface;
 
     return Align(
       alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
@@ -55,9 +62,38 @@ class MessageBubble extends StatelessWidget {
                   height: 180,
                 ),
               ),
-              if (message.text.isNotEmpty) const SizedBox(height: 8),
+              if (message.text.isNotEmpty && !isError)
+                const SizedBox(height: 8),
             ],
-            if (message.text.isNotEmpty)
+            if (isError) ...[
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.error_outline, size: 18, color: textColor),
+                  const SizedBox(width: 6),
+                  Text(
+                    "Claw couldn't finish that.",
+                    style: TextStyle(color: textColor, fontSize: 14),
+                  ),
+                ],
+              ),
+              if (onRetry != null) ...[
+                const SizedBox(height: 6),
+                TextButton.icon(
+                  onPressed: onRetry,
+                  icon: Icon(Icons.refresh, size: 16, color: textColor),
+                  label: Text('Retry', style: TextStyle(color: textColor)),
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                ),
+              ],
+            ] else if (message.text.isNotEmpty)
               isUser
                   ? Text(
                       message.text,

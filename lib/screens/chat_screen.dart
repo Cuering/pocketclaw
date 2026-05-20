@@ -40,6 +40,12 @@ class _ChatScreenState extends State<ChatScreen> {
   Uint8List? _pendingImage;
   String? _pendingImageName;
 
+  // Remembered failed send (for the Retry button on a failed assistant
+  // bubble). Cleared on success or on a fresh send. We also keep the
+  // bytes so retry recreates the exact same multimodal request.
+  String? _lastFailedText;
+  Uint8List? _lastFailedImage;
+
   // Whether Gemma is currently generating; disables input when true.
   bool _busy = false;
 
@@ -92,18 +98,30 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _pickImage() async {
-    final picker = ImagePicker();
-    final picked = await picker.pickImage(
-      source: ImageSource.gallery,
-      maxWidth: 2048,
-    );
-    if (picked == null) return;
-    final bytes = await picked.readAsBytes();
-    if (!mounted) return;
-    setState(() {
-      _pendingImage = bytes;
-      _pendingImageName = picked.name;
-    });
+    try {
+      final picker = ImagePicker();
+      final picked = await picker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 2048,
+      );
+      if (picked == null) return;
+      final bytes = await picked.readAsBytes();
+      if (!mounted) return;
+      setState(() {
+        _pendingImage = bytes;
+        _pendingImageName = picked.name;
+      });
+    } catch (e, stack) {
+      debugPrint('🐾 CHAT: image pick failed: $e\n$stack');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Couldn\'t open image picker.'),
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
+    }
   }
 
   void _clearAttachment() {
@@ -218,13 +236,34 @@ class _ChatScreenState extends State<ChatScreen> {
       debugPrint('🐾 CHAT: generate failed: $e\n$stack');
       if (mounted) {
         setState(() {
+          // Remember what failed so the Retry button can re-run it.
+          _lastFailedText = text;
+          _lastFailedImage = imageBytes;
           final lastIdx = _conversation.messages.length - 1;
+          // Tag the assistant message with a sentinel that the bubble
+          // renderer recognises and replaces with a Retry UI.
           _conversation.messages[lastIdx] =
-              _conversation.messages[lastIdx].copyWith(text: 'Error: $e');
+              _conversation.messages[lastIdx].copyWith(
+            text: '__CLAW_ERROR__',
+          );
         });
       }
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          // If we got here without setting _lastFailedText, the run
+          // succeeded -- clear any previous failure marker.
+          // We use the empty-string check on the trailing assistant message
+          // as a proxy for "did anything stream in?".
+          if (_conversation.messages.isNotEmpty &&
+              _conversation.messages.last.text != '__CLAW_ERROR__' &&
+              _conversation.messages.last.text.isNotEmpty) {
+            _lastFailedText = null;
+            _lastFailedImage = null;
+          }
+        });
+      }
 
       // Auto-title if this is the first user message in a brand-new chat.
       if (_conversation.title == 'New chat') {
@@ -235,10 +274,38 @@ class _ChatScreenState extends State<ChatScreen> {
       // not surfaced — the in-memory conversation is still usable.
       try {
         await ConversationStore.instance.save(_conversation);
-      } catch (e) {
-        debugPrint('🐾 CHAT: save failed: $e');
+      } catch (e, stack) {
+        debugPrint('🐾 CHAT: save failed: $e\n$stack');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Couldn\'t save this conversation.'),
+              duration: Duration(seconds: 3),
+            ),
+          );
+        }
       }
     }
+  }
+
+  /// Re-runs the last failed user send. The failed assistant bubble is
+  /// removed first so the new attempt produces a fresh one.
+  Future<void> _retry() async {
+    final text = _lastFailedText;
+    final image = _lastFailedImage;
+    if (text == null) return;
+    setState(() {
+      // Drop the last two messages (the user msg + the failed assistant msg)
+      // so _handleSend re-adds them cleanly.
+      if (_conversation.messages.length >= 2) {
+        _conversation.messages.removeLast();
+        _conversation.messages.removeLast();
+      }
+      _pendingImage = image;
+      _lastFailedText = null;
+      _lastFailedImage = null;
+    });
+    await _handleSend(text);
   }
 
   Future<void> _openConversationList() async {
@@ -321,8 +388,15 @@ class _ChatScreenState extends State<ChatScreen> {
                           style: Theme.of(context).textTheme.bodySmall,
                         ),
                       ),
-                      if (state == GemmaState.notInstalled ||
-                          state == GemmaState.error)
+                      if (state == GemmaState.error)
+                        TextButton(
+                          onPressed: () {
+                            // Re-bootstrap Gemma. init() is safe to call again.
+                            GemmaService.instance.init();
+                          },
+                          child: const Text('Retry'),
+                        ),
+                      if (state == GemmaState.notInstalled)
                         TextButton(
                           onPressed: widget.onOpenDiagnostics,
                           child: const Text('Set up'),
@@ -340,8 +414,16 @@ class _ChatScreenState extends State<ChatScreen> {
                     controller: _scrollController,
                     padding: const EdgeInsets.symmetric(vertical: 8),
                     itemCount: _conversation.messages.length,
-                    itemBuilder: (_, i) =>
-                        MessageBubble(message: _conversation.messages[i]),
+                    itemBuilder: (_, i) {
+                    final m = _conversation.messages[i];
+                    // Only attach retry to the last message if it's a failed one.
+                    final isLastFailed = i == _conversation.messages.length - 1 &&
+                        m.text == '__CLAW_ERROR__';
+                    return MessageBubble(
+                      message: m,
+                      onRetry: isLastFailed ? _retry : null,
+                    );
+                  },
                   ),
           ),
           ValueListenableBuilder<GemmaState>(
@@ -375,8 +457,7 @@ class _ChatScreenState extends State<ChatScreen> {
       case GemmaState.loading:
         return 'Loading Claw into memory…';
       case GemmaState.error:
-        final err = GemmaService.instance.lastError;
-        return 'Setup error: ${err ?? "unknown"}';
+        return 'Couldn\'t start Claw. Check your connection and try again.';
       case GemmaState.ready:
       case GemmaState.generating:
         return '';
