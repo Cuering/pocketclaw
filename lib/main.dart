@@ -18,6 +18,9 @@ import 'package:flutter/material.dart';
 import 'screens/chat_screen.dart';
 import 'screens/diagnostics_screen.dart';
 import 'services/gemma_service.dart';
+import 'services/prefs_service.dart';
+import 'screens/onboarding_screen.dart';
+import 'models/conversation.dart';
 import 'services/conversation_store.dart';
 
 // Shared port name. Must match what listeners register under
@@ -105,7 +108,14 @@ Future<void> main() async {
   // disappears when the model is ready. ~5-10s on a Snapdragon 7s Gen 3
   // for the GPU-delegated load.
   await ConversationStore.instance.init();
+  await PrefsService.instance.init();
   await GemmaService.instance.init();
+  // Returning users: kick off install + load in background. Onboarding
+  // handles first-time users directly so this is a no-op for them.
+  if (PrefsService.instance.isOnboarded) {
+    // ignore: discarded_futures
+    GemmaService.instance.resumeIfInstalled();
+  }
   runApp(const PocketClawApp());
 }
 
@@ -131,19 +141,67 @@ class PocketClawApp extends StatelessWidget {
           brightness: Brightness.dark,
         ),
       ),
-      home: Builder(
-        builder: (context) {
-          return ChatScreen(
-            onOpenDiagnostics: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => const DiagnosticsScreen(),
-                ),
-              );
-            },
-          );
+      home: const _RootRouter(),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// ROOT ROUTER
+// ─────────────────────────────────────────────────────────────────────────
+
+/// Decides what the user sees on launch:
+///   - First-time user (!isOnboarded) → OnboardingScreen
+///   - Returning user with prior chats → ChatScreen with most-recent loaded
+///   - Returning user, no prior chats → ChatScreen with a fresh empty conv
+///
+/// Stateful so we can rebuild after onboarding completes (no need to
+/// restart the app).
+class _RootRouter extends StatefulWidget {
+  const _RootRouter();
+
+  @override
+  State<_RootRouter> createState() => _RootRouterState();
+}
+
+class _RootRouterState extends State<_RootRouter> {
+  bool _showOnboarding = !PrefsService.instance.isOnboarded;
+
+  @override
+  Widget build(BuildContext context) {
+    if (_showOnboarding) {
+      return OnboardingScreen(
+        onDone: () {
+          setState(() => _showOnboarding = false);
+          // After onboarding, the model is already loaded (onboarding waited
+          // for state == ready before calling onDone). Returning users would
+          // have done resumeIfInstalled() in main(); we don't need to do
+          // anything else here.
         },
-      ),
+      );
+    }
+
+    return FutureBuilder<List<Conversation>>(
+      future: ConversationStore.instance.loadAll(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) {
+          // Brief flash while we load the list. Material splash background.
+          return const Scaffold(body: Center(child: CircularProgressIndicator()));
+        }
+        final convs = snapshot.data!;
+        // Auto-resume: most-recent conversation (loadAll sorts desc).
+        final initial = convs.isNotEmpty ? convs.first : null;
+        return ChatScreen(
+          conversation: initial,
+          onOpenDiagnostics: () {
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => const DiagnosticsScreen(),
+              ),
+            );
+          },
+        );
+      },
     );
   }
 }

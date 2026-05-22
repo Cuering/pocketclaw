@@ -60,6 +60,14 @@ class GemmaService {
 
   // ── Private model handle ───────────────────────────────────────────────
 
+  // Whether we've called FlutterGemma.installModel().install() this session.
+  // The plugin's "active model" pointer is process-scoped and only set by
+  // calling install() — even if the file is already on disk. Without this
+  // flag, ensureInstalled() short-circuits on the "file exists" state and
+  // load() fails with "No active inference model set". Bug reproduced
+  // 2026-05-21 in the onboarding flow.
+  bool _pluginInstallDone = false;
+
   // The loaded model instance from flutter_gemma. Null until loaded.
   // `_` prefix = file-private. `InferenceModel?` because it's nullable
   // (null when not loaded).
@@ -83,49 +91,96 @@ class GemmaService {
   /// Auto-load errors surface via the state ValueListenable (transitions
   /// to error). Caller does not need to await successful load — UI watches
   /// state and reacts when it flips to ready.
+  /// One-time plugin bootstrap. Idempotent: safe to call multiple times.
+  ///
+  /// After this returns, [state] is one of:
+  ///   - [GemmaState.notInstalled] — first-time user, must run [ensureInstalled]
+  ///   - [GemmaState.installed]    — file on disk but not loaded yet
+  ///                                  (onboarding can fire [ensureLoaded] in
+  ///                                  background; chat screen does this for
+  ///                                  returning users)
+  ///
+  /// Does NOT auto-install or auto-load. Callers decide when those happen so
+  /// onboarding can stage them deliberately. For returning users, see
+  /// [resumeIfInstalled] below.
   Future<void> init() async {
-    // Step 1: bootstrap the plugin. Per docs, multiple calls are safe.
     await fg.FlutterGemma.initialize();
-
-    // Step 2: check disk
     final installed = await isInstalled();
-    if (!installed) {
-      // First-time launch (or fresh install). UI shows the download button;
-      // user taps it, install() runs, then load() runs. We do nothing here.
-      _state.value = GemmaState.notInstalled;
+    _state.value = installed ? GemmaState.installed : GemmaState.notInstalled;
+  }
+
+  /// Returning-user convenience: if the file is on disk, kick off install()
+  /// (idempotent — registers active model) and a background load(). Used by
+  /// main() after init() so the chat screen lights up without extra taps.
+  /// First-time users skip this entirely and go through onboarding.
+  Future<void> resumeIfInstalled() async {
+    if (_state.value != GemmaState.installed) return;
+    try {
+      await ensureInstalled();
+    } catch (e, stack) {
+      debugPrint('🐾 GEMMA: resume install() failed: $e\n$stack');
       return;
     }
+    // ignore: discarded_futures
+    ensureLoaded().catchError((e, stack) {
+      debugPrint('🐾 GEMMA: resume load() failed: $e\n$stack');
+    });
+  }
 
-    // Model file is on disk but the plugin has no notion of an "active model"
-    // until install() runs. install() is idempotent: when the file already
-    // exists it skips the download and just calls setActiveModel internally.
-    // So we always run install() to register the file with the plugin, then
-    // load it into memory.
-    //
-    // Net cost on a warm boot (file already present): a few hundred ms.
-    // The user sees the "Loading Claw…" banner during this whole sequence.
+  /// Idempotent install. Downloads the model if not present, then calls
+  /// the plugin's setActiveModel internally. Cheap when the file already
+  /// exists (~hundreds of ms to register the spec).
+  ///
+  /// Onboarding's "Download" button calls this and awaits completion
+  /// (showing progress). After it returns, state is [GemmaState.installed].
+  Future<void> ensureInstalled() async {
+    // If we've already registered the plugin's active model this session,
+    // short-circuit. Otherwise we MUST call installModel() — even if the
+    // file is on disk — because the active-model pointer is process-scoped
+    // and not implied by the file's existence.
+    if (_pluginInstallDone) return;
+    if (_state.value == GemmaState.installing) return;
+    if (_state.value == GemmaState.loading ||
+        _state.value == GemmaState.ready ||
+        _state.value == GemmaState.generating) {
+      // Some other path has progressed past install (e.g. via resumeIfInstalled).
+      // Treat plugin install as done.
+      _pluginInstallDone = true;
+      return;
+    }
     try {
       _state.value = GemmaState.installing;
+      _downloadProgress.value = 0;
       await fg.FlutterGemma.installModel(
         modelType: GemmaConfig.modelType,
         fileType: GemmaConfig.fileType,
-      ).fromNetwork(GemmaConfig.modelUrl).install();
-
+      ).fromNetwork(GemmaConfig.modelUrl).withProgress((p) {
+        _downloadProgress.value = p;
+      }).install();
+      _pluginInstallDone = true;
       _state.value = GemmaState.installed;
     } catch (e, stack) {
       _lastError = e;
       _state.value = GemmaState.error;
-      debugPrint('🐾 GEMMA: init install() failed: $e\n$stack');
+      debugPrint('🐾 GEMMA: ensureInstalled() failed: $e\n$stack');
+      throw GemmaException('Failed to install Gemma model', e);
+    }
+  }
+
+  /// Idempotent load. Pulls the active model into memory.
+  /// Existing guards in load() prevent double-allocation.
+  Future<void> ensureLoaded() async {
+    if (_state.value == GemmaState.ready ||
+        _state.value == GemmaState.generating ||
+        _state.value == GemmaState.loading) {
       return;
     }
-
-    // Step 3: auto-load in the background. We do NOT await — the UI watches
-    // the state ValueListenable and reacts when it flips to ready.
-    // ignore: discarded_futures
-    load().catchError((e, stack) {
-      debugPrint('🐾 GEMMA: auto-load failed: $e\n$stack');
-      // State is already GemmaState.error inside load()'s catch block.
-    });
+    if (_state.value != GemmaState.installed) {
+      throw const GemmaException(
+        'Model not installed. Call ensureInstalled() first.',
+      );
+    }
+    await load();
   }
 
   Future<bool> isInstalled() async {
@@ -175,6 +230,7 @@ class GemmaService {
         _downloadProgress.value = progress;
       }).install();
 
+      _pluginInstallDone = true;
       _state.value = GemmaState.installed;
     } catch (e) {
       _lastError = e;
