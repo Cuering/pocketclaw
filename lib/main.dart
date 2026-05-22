@@ -19,9 +19,11 @@ import 'screens/chat_screen.dart';
 import 'screens/diagnostics_screen.dart';
 import 'services/gemma_service.dart';
 import 'services/prefs_service.dart';
+import 'services/rag_service.dart';
 import 'screens/onboarding_screen.dart';
 import 'models/conversation.dart';
 import 'services/conversation_store.dart';
+import 'services/document_store.dart';
 
 // Shared port name. Must match what listeners register under
 // IsolateNameServer.registerPortWithName(...). The diagnostics screen
@@ -108,8 +110,13 @@ Future<void> main() async {
   // disappears when the model is ready. ~5-10s on a Snapdragon 7s Gen 3
   // for the GPU-delegated load.
   await ConversationStore.instance.init();
+  await DocumentStore.instance.init();
   await PrefsService.instance.init();
   await GemmaService.instance.init();
+  // RagService.init opens the sqlite_vec store; safe before the embedder
+  // is installed (retrieval will simply return empty until embedder ready).
+  // ignore: discarded_futures
+  RagService.instance.init();
   // Returning users: kick off install + load in background. Onboarding
   // handles first-time users directly so this is a no-op for them.
   if (PrefsService.instance.isOnboarded) {
