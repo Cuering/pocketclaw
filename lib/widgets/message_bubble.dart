@@ -10,10 +10,19 @@ const String kErrorSentinel = '__CLAW_ERROR__';
 
 /// Renders one message in the chat thread.
 class MessageBubble extends StatelessWidget {
-  const MessageBubble({super.key, required this.message, this.onRetry});
+  const MessageBubble({
+    super.key,
+    required this.message,
+    this.onRetry,
+    this.onDocTap,
+  });
 
   final Message message;
   final VoidCallback? onRetry;
+  /// Called when the doc-attachment card is tapped (to open preview).
+  /// Null = card is non-interactive (e.g. inside the sender's bubble
+  /// while doc is still indexing).
+  final VoidCallback? onDocTap;
 
   @override
   Widget build(BuildContext context) {
@@ -61,6 +70,16 @@ class MessageBubble extends StatelessWidget {
                   fit: BoxFit.cover,
                   height: 180,
                 ),
+              ),
+              if (message.text.isNotEmpty && !isError)
+                const SizedBox(height: 8),
+            ],
+            if (message.hasDoc) ...[
+              _DocAttachmentCard(
+                docName: message.attachedDocName!,
+                chunkCount: message.attachedDocChunkCount ?? 0,
+                onTap: onDocTap,
+                onPrimary: isUser,
               ),
               if (message.text.isNotEmpty && !isError)
                 const SizedBox(height: 8),
@@ -123,3 +142,82 @@ class MessageBubble extends StatelessWidget {
     );
   }
 }
+
+class _DocAttachmentCard extends StatelessWidget {
+  const _DocAttachmentCard({
+    required this.docName,
+    required this.chunkCount,
+    required this.onTap,
+    required this.onPrimary,
+  });
+
+  final String docName;
+  final int chunkCount;
+  final VoidCallback? onTap;
+
+  /// True when this card is rendered inside a primary-colored (user) bubble.
+  /// We invert the card's own surface color to keep contrast.
+  final bool onPrimary;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final bg = onPrimary
+        ? theme.colorScheme.onPrimary.withValues(alpha: 0.12)
+        : theme.colorScheme.primaryContainer;
+    final fg = onPrimary
+        ? theme.colorScheme.onPrimary
+        : theme.colorScheme.onPrimaryContainer;
+    return Material(
+      color: bg,
+      borderRadius: BorderRadius.circular(10),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(10),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.description_outlined, size: 20, color: fg),
+              const SizedBox(width: 8),
+              Flexible(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      docName,
+                      style: TextStyle(
+                        color: fg,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    if (chunkCount > 0)
+                      Text(
+                        chunkCount == 1
+                            ? '1 section indexed'
+                            : '$chunkCount sections indexed',
+                        style: TextStyle(
+                          color: fg.withValues(alpha: 0.75),
+                          fontSize: 11,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              if (onTap != null) ...[
+                const SizedBox(width: 6),
+                Icon(Icons.chevron_right, size: 18, color: fg),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+

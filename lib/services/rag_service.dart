@@ -297,6 +297,55 @@ class RagService {
     }
   }
 
+  /// Fallback for generic queries like "summarise this" where the user's
+  /// query has no semantic overlap with the doc's content. Uses each doc's
+  /// own filename as the retrieval query and returns the top chunks.
+  ///
+  /// Filename-as-query works because:
+  ///   - The plugin's searchSimilar embeds the query before searching;
+  ///     filenames are rare, distinctive tokens
+  ///   - We've stored doc_name in chunk metadata so most chunks match
+  ///   - Beats threshold filtering for "summarise / explain / tldr" intents
+  Future<List<RetrievedChunk>> getDocStarts({
+    required String conversationId,
+    int perDocLimit = 3,
+  }) async {
+    if (!_initialized) return const [];
+    final docs = await DocumentStore.instance.loadForConversation(conversationId);
+    if (docs.isEmpty) return const [];
+
+    final results = <RetrievedChunk>[];
+    for (final doc in docs) {
+      try {
+        final raw = await fg.FlutterGemmaPlugin.instance.searchSimilar(
+          query: doc.name,
+          topK: perDocLimit * 4,
+          threshold: 0.0,
+        );
+        int picked = 0;
+        for (final r in raw) {
+          if (picked >= perDocLimit) break;
+          try {
+            final meta = jsonDecode(r.metadata ?? '{}') as Map<String, dynamic>;
+            if (meta['conversation_id'] != conversationId) continue;
+            if (meta['doc_id'] != doc.id) continue;
+            results.add(RetrievedChunk(
+              content: r.content,
+              docName: meta['doc_name'] as String? ?? doc.name,
+              chunkIndex: meta['chunk_index'] as int? ?? 0,
+              similarity: r.similarity,
+            ));
+            picked++;
+          } catch (_) {}
+        }
+      } catch (e) {
+        debugPrint('🐾 RAG: getDocStarts failed for ${doc.name}: $e');
+      }
+    }
+    debugPrint('🐾 RAG: fallback returned ${results.length} chunks across ${docs.length} docs');
+    return results;
+  }
+
   /// Remove a document's metadata from PocketClaw's store.
   /// Note: The chunks remain in the vector store. The plugin's facade
   /// does not expose per-document removal; only [clearVectorStore]

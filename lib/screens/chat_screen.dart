@@ -1,12 +1,19 @@
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:syncfusion_flutter_pdf/pdf.dart';
+
 import 'package:image_picker/image_picker.dart';
 
 import '../models/conversation.dart';
+import '../models/document.dart';
+import '../services/document_store.dart';
+import '../services/rag_service.dart';
 import '../models/message.dart';
 import '../services/conversation_store.dart';
 import '../services/gemma_service.dart';
+import '../services/prefs_service.dart';
 import '../widgets/chat_input.dart';
 import '../widgets/message_bubble.dart';
 import 'conversation_list_screen.dart';
@@ -40,6 +47,15 @@ class _ChatScreenState extends State<ChatScreen> {
   Uint8List? _pendingImage;
   String? _pendingImageName;
 
+  // Documents indexed for the current conversation. Loaded once on init
+  // and after every successful index. Drives the chip strip above the
+  // input bar and the RAG retrieval in _handleSend.
+  List<Document> _documents = const [];
+
+  // True while a document is being chunked + embedded. Disables the
+  // attach button to prevent double-indexing and shows a snackbar.
+  bool _indexing = false;
+
   // Remembered failed send (for the Retry button on a failed assistant
   // bubble). Cleared on success or on a fresh send. We also keep the
   // bytes so retry recreates the exact same multimodal request.
@@ -63,6 +79,7 @@ class _ChatScreenState extends State<ChatScreen> {
   void initState() {
     super.initState();
     _conversation = widget.conversation ?? Conversation();
+    _loadDocuments();
   }
 
   @override
@@ -76,7 +93,9 @@ class _ChatScreenState extends State<ChatScreen> {
         _compactionNote = null;
         _pendingImage = null;
         _pendingImageName = null;
+        _documents = const [];
       });
+      _loadDocuments();
     }
   }
 
@@ -207,18 +226,79 @@ class _ChatScreenState extends State<ChatScreen> {
     _conversation.messages
       ..clear()
       ..addAll(historyForPrompt.where((m) => m != userMsg));
-    final prompt = _buildPromptFromHistory(text);
+    var prompt = _buildPromptFromHistory(text);
     _conversation.messages
       ..clear()
       ..addAll(backup);
 
     _compactIfNeeded();
 
+    // RAG: if any documents are indexed for this conversation, retrieve
+    // the top chunks for the user's query and prepend them as context.
+    // Soft-fails: if retrieval errors, we just send the prompt as-is so
+    // chat keeps working even if the embedder or vector store dies.
+    if (_documents.isNotEmpty) {
+      try {
+        var hits = await RagService.instance.retrieve(
+          query: text,
+          conversationId: _conversation.id,
+        );
+
+        // Fallback for generic queries: "summarise", "explain", "tldr",
+        // "what's this about" — these have no semantic overlap with the
+        // doc's actual content, so similarity search misses. When the
+        // query looks like one of these AND retrieval was empty (or only
+        // brought back low-quality hits), fall back to filename-anchored
+        // retrieval which grabs doc starts regardless of query terms.
+        final lower = text.toLowerCase();
+        final isGenericIntent = hits.isEmpty &&
+            (lower.contains('summari') ||
+                lower.contains('summary') ||
+                lower.contains('tldr') ||
+                lower.contains('tl;dr') ||
+                lower.contains('explain') ||
+                lower.contains('describe') ||
+                lower.contains('what is this') ||
+                lower.contains("what's this") ||
+                lower.contains('what is the') ||
+                lower.contains('overview') ||
+                lower.contains('key point') ||
+                lower.contains('main idea') ||
+                lower.contains('the document') ||
+                lower.contains('the doc') ||
+                lower.contains('the file') ||
+                lower.contains('the pdf'));
+        if (isGenericIntent) {
+          debugPrint('🐾 CHAT: generic query, using filename-anchored fallback');
+          hits = await RagService.instance.getDocStarts(
+            conversationId: _conversation.id,
+          );
+        }
+
+        if (hits.isNotEmpty) {
+          final context = StringBuffer();
+          context.writeln('Use the following document excerpts to answer:');
+          for (final h in hits) {
+            context.writeln();
+            context.writeln('[From ${h.docName}]');
+            context.writeln(h.content);
+          }
+          context.writeln();
+          context.writeln('---');
+          prompt = '${context.toString()}\n$prompt';
+          debugPrint('🐾 CHAT: prepended ${hits.length} RAG chunks');
+        }
+      } catch (e, stack) {
+        debugPrint('🐾 CHAT: retrieval failed (soft-fail): $e\n$stack');
+      }
+    }
+
     try {
       final responseBuffer = StringBuffer();
       await GemmaService.instance.generate(
         prompt,
         imageBytes: imageBytes,
+        userName: PrefsService.instance.current.name,
         onToken: (chunk) {
           responseBuffer.write(chunk);
           if (!mounted) return;
@@ -288,6 +368,198 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  /// Load the documents indexed for the current conversation. Cheap —
+  /// just walks the Hive box filtering by conversation_id.
+  Future<void> _loadDocuments() async {
+    try {
+      final docs = await DocumentStore.instance
+          .loadForConversation(_conversation.id);
+      if (!mounted) return;
+      setState(() => _documents = docs);
+    } catch (e, stack) {
+      debugPrint('🐾 CHAT: _loadDocuments failed: $e\n$stack');
+      // Soft-fail: empty list, chat keeps working.
+    }
+  }
+
+  /// Open file picker, read selected .txt file, hand off to RagService
+  /// for chunking + embedding + storage. Snackbar progress, chip
+  /// strip refresh on success.
+  Future<void> _pickAndIndexDocument() async {
+    if (_indexing) return;
+    if (GemmaService.instance.embedderState.value !=
+        EmbedderState.installed) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Claw is still getting ready. Just a moment…"),
+          duration: Duration(seconds: 3),
+        ),
+      );
+      return;
+    }
+
+    FilePickerResult? picked;
+    try {
+      picked = await FilePicker.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: const ['txt', 'md', 'pdf'],
+        withData: true,
+      );
+    } catch (e, stack) {
+      debugPrint('🐾 CHAT: file picker failed: $e\n$stack');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Couldn't open the file picker."),
+          duration: Duration(seconds: 3),
+        ),
+      );
+      return;
+    }
+
+    if (picked == null || picked.files.isEmpty) return;
+    final file = picked.files.single;
+    final bytes = file.bytes;
+    if (!mounted) return;
+    if (bytes == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Couldn't read that file."),
+          duration: Duration(seconds: 3),
+        ),
+      );
+      return;
+    }
+
+    // Extract text based on file type. PDF -> Syncfusion. txt/md -> UTF-8.
+    final ext = file.extension?.toLowerCase() ?? '';
+    String text;
+    try {
+      if (ext == 'pdf') {
+        final pdfDoc = PdfDocument(inputBytes: bytes);
+        text = PdfTextExtractor(pdfDoc).extractText();
+        pdfDoc.dispose();
+      } else {
+        text = String.fromCharCodes(bytes);
+      }
+    } catch (e, stack) {
+      debugPrint('🐾 CHAT: text extraction failed: $e\n$stack');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Claw couldn't read that file. Try a different one?"),
+          duration: Duration(seconds: 3),
+        ),
+      );
+      return;
+    }
+
+    if (text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('That file looks empty.'),
+          duration: Duration(seconds: 3),
+        ),
+      );
+      return;
+    }
+
+    setState(() => _indexing = true);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Reading ${file.name}…'),
+        duration: const Duration(seconds: 30),
+      ),
+    );
+
+    try {
+      // Persist the conversation FIRST if it has no messages yet, so
+      // the document's conversationId points at something that will
+      // exist when the user later reopens the chat.
+      if (_conversation.messages.isEmpty &&
+          _conversation.title == 'New chat') {
+        _conversation.title = file.name;
+        await ConversationStore.instance.save(_conversation);
+      }
+
+      final doc = await RagService.instance.indexDocument(
+        text: text,
+        name: file.name,
+        conversationId: _conversation.id,
+      );
+
+      await _loadDocuments();
+      if (!mounted) return;
+
+      // Append a user message bubble showing the attachment, persist it.
+      // This is what makes the doc visible in chat history (Option A).
+      final docMsg = Message(
+        role: MessageRole.user,
+        text: '',
+        attachedDocId: doc.id,
+        attachedDocName: doc.name,
+        attachedDocChunkCount: doc.chunkCount,
+      );
+      setState(() {
+        _conversation.messages.add(docMsg);
+      });
+      try {
+        await ConversationStore.instance.save(_conversation);
+      } catch (e) {
+        debugPrint('🐾 CHAT: failed to save doc msg: $e');
+      }
+      _scrollToBottom();
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Done! Ask Claw about ${file.name}.'),
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    } catch (e, stack) {
+      debugPrint('🐾 CHAT: indexDocument failed: $e\n$stack');
+      if (mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Claw couldn't read that file. Try a different one?"),
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _indexing = false);
+    }
+  }
+
+  /// Remove a document from the conversation's context. Soft-delete:
+  /// chunks remain orphans in the vector store but become invisible
+  /// because we filter by conversation_id at retrieve time.
+  Future<void> _removeDocument(Document doc) async {
+    try {
+      await RagService.instance.deleteDocument(doc);
+      await _loadDocuments();
+    } catch (e, stack) {
+      debugPrint('🐾 CHAT: _removeDocument failed: $e\n$stack');
+    }
+  }
+
+  /// Open a bottom sheet showing what's known about an indexed doc.
+  /// The original bytes aren't kept around (only chunks in the vector
+  /// store), so for now the preview shows metadata + suggested questions.
+  /// v2 can fetch chunk contents back by id and show them in full.
+  Future<void> _previewDocument(String docId) async {
+    final doc = await DocumentStore.instance.getById(docId);
+    if (doc == null || !mounted) return;
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => _DocumentPreviewSheet(document: doc),
+    );
+  }
+
   /// Re-runs the last failed user send. The failed assistant bubble is
   /// removed first so the new attempt produces a fresh one.
   Future<void> _retry() async {
@@ -322,12 +594,16 @@ class _ChatScreenState extends State<ChatScreen> {
       setState(() {
         _conversation = Conversation();
         _compactionNote = null;
+        _documents = const [];
       });
+      _loadDocuments();
     } else {
       setState(() {
         _conversation = picked;
         _compactionNote = null;
+        _documents = const [];
       });
+      _loadDocuments();
     }
   }
 
@@ -352,7 +628,9 @@ class _ChatScreenState extends State<ChatScreen> {
                 setState(() {
                   _conversation = Conversation();
                   _compactionNote = null;
+                  _documents = const [];
                 });
+                _loadDocuments();
               }
             },
             itemBuilder: (_) => const [
@@ -422,10 +700,19 @@ class _ChatScreenState extends State<ChatScreen> {
                     return MessageBubble(
                       message: m,
                       onRetry: isLastFailed ? _retry : null,
+                      onDocTap: m.hasDoc
+                          ? () => _previewDocument(m.attachedDocId!)
+                          : null,
                     );
                   },
                   ),
           ),
+          if (_documents.isNotEmpty)
+            _DocumentChipsBar(
+              documents: _documents,
+              onRemove: _removeDocument,
+              onTap: (d) => _previewDocument(d.id),
+            ),
           ValueListenableBuilder<GemmaState>(
             valueListenable: GemmaService.instance.state,
             builder: (context, state, _) {
@@ -438,6 +725,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 attachedImageName: _pendingImageName,
                 onAttachImage: _pickImage,
                 onClearAttachment: _clearAttachment,
+                onAttachDocument: _pickAndIndexDocument,
               );
             },
           ),
@@ -449,13 +737,13 @@ class _ChatScreenState extends State<ChatScreen> {
   String _bannerForState(GemmaState state) {
     switch (state) {
       case GemmaState.notInstalled:
-        return 'Claw needs to download its brain (~1.5 GB) before you can chat.';
+        return 'Claw needs to finish setup before you can chat.';
       case GemmaState.installing:
-        return 'Downloading Claw…';
+        return 'Setting up Claw…';
       case GemmaState.installed:
-        return 'Claw is installed but not loaded into memory yet.';
+        return 'Almost ready…';
       case GemmaState.loading:
-        return 'Loading Claw into memory…';
+        return 'Almost ready…';
       case GemmaState.error:
         return 'Couldn\'t start Claw. Check your connection and try again.';
       case GemmaState.ready:
@@ -486,6 +774,153 @@ class _EmptyState extends StatelessWidget {
               textAlign: TextAlign.center,
               style: theme.textTheme.bodyMedium?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DocumentChipsBar extends StatelessWidget {
+  const _DocumentChipsBar({
+    required this.documents,
+    required this.onRemove,
+    required this.onTap,
+  });
+
+  final List<Document> documents;
+  final void Function(Document) onRemove;
+  final void Function(Document) onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      height: 48,
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      color: theme.colorScheme.surface,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: documents.length,
+        separatorBuilder: (_, _) => const SizedBox(width: 6),
+        itemBuilder: (_, i) {
+          final d = documents[i];
+          return InputChip(
+            avatar: const Icon(Icons.description_outlined, size: 18),
+            label: Text(
+              d.name,
+              style: theme.textTheme.bodySmall,
+              overflow: TextOverflow.ellipsis,
+            ),
+            onPressed: () => onTap(d),
+            onDeleted: () => onRemove(d),
+            deleteIcon: const Icon(Icons.close, size: 16),
+          );
+        },
+      ),
+    );
+  }
+}
+
+
+class _DocumentPreviewSheet extends StatelessWidget {
+  const _DocumentPreviewSheet({required this.document});
+
+  final Document document;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return DraggableScrollableSheet(
+      initialChildSize: 0.5,
+      minChildSize: 0.3,
+      maxChildSize: 0.9,
+      expand: false,
+      builder: (_, scrollCtrl) => Container(
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surface,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+        ),
+        child: Column(
+          children: [
+            const SizedBox(height: 8),
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.description_outlined,
+                    color: theme.colorScheme.primary,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          document.name,
+                          style: theme.textTheme.titleMedium,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        Text(
+                          '${document.chunkCount} sections indexed',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: () => Navigator.of(context).pop(),
+                  ),
+                ],
+              ),
+            ),
+            const Divider(),
+            Expanded(
+              child: ListView(
+                controller: scrollCtrl,
+                padding: const EdgeInsets.all(16),
+                children: [
+                  Text(
+                    'Claw can answer questions about this document. Try asking:',
+                    style: theme.textTheme.bodyMedium,
+                  ),
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('• What is this document about?',
+                            style: theme.textTheme.bodySmall),
+                        const SizedBox(height: 4),
+                        Text('• Summarise the key points',
+                            style: theme.textTheme.bodySmall),
+                        const SizedBox(height: 4),
+                        Text('• Find any mentions of <topic>',
+                            style: theme.textTheme.bodySmall),
+                      ],
+                    ),
+                  ),
+                ],
               ),
             ),
           ],

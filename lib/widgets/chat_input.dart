@@ -14,6 +14,7 @@ class ChatInput extends StatefulWidget {
     this.attachedImageName,
     required this.onAttachImage,
     required this.onClearAttachment,
+    required this.onAttachDocument,
   });
 
   final void Function(String text) onSend;
@@ -22,6 +23,7 @@ class ChatInput extends StatefulWidget {
   final String? attachedImageName;
   final VoidCallback onAttachImage;
   final VoidCallback onClearAttachment;
+  final VoidCallback onAttachDocument;
 
   @override
   State<ChatInput> createState() => _ChatInputState();
@@ -73,6 +75,11 @@ class _ChatInputState extends State<ChatInput> {
                     icon: const Icon(Icons.add_photo_alternate_outlined),
                     onPressed: widget.enabled ? widget.onAttachImage : null,
                     tooltip: 'Attach image',
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.description_outlined),
+                    onPressed: widget.enabled ? widget.onAttachDocument : null,
+                    tooltip: 'Attach document',
                   ),
                   Expanded(
                     child: TextField(

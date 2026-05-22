@@ -156,6 +156,20 @@ class GemmaService {
     ensureLoaded().catchError((e, stack) {
       debugPrint('🐾 GEMMA: resume load() failed: $e\n$stack');
     });
+
+    // The embedder lives a separate lifecycle but has the same "active
+    // model pointer is process-scoped" trap: even when the file is on
+    // disk, the plugin needs installEmbedder() called once per session
+    // to register the active spec. Without this call, RAG silently
+    // fails on returning users with: "Document understanding isn't
+    // ready yet." Bug observed 2026-05-22 00:30.
+    //
+    // Fire-and-forget — chat doesn't block on it, RAG just stays
+    // disabled until it completes.
+    // ignore: discarded_futures
+    installEmbedder().catchError((e, stack) {
+      debugPrint('🐾 GEMMA: resume installEmbedder() failed: $e\n$stack');
+    });
   }
 
   /// Idempotent install. Downloads the model if not present, then calls
@@ -387,6 +401,9 @@ class GemmaService {
     // working without changes.
     Uint8List? imageBytes,
     void Function(String chunk)? onToken,
+    // Optional display name from UserPrefs. When supplied, the system
+    // preamble tells Gemma the user's name so "what's my name" works.
+    String? userName,
   }) async {
     final model = _model;
     if (model == null) {
@@ -398,9 +415,13 @@ class GemmaService {
       // Create a fresh chat session for this prompt.
       // (For multi-turn we'd keep one chat and add chunks; we'll get to that.)
       final chat = await model.createChat();
-      const systemPreamble =
+      final nameLine = (userName != null && userName.trim().isNotEmpty)
+          ? "You are talking to ${userName.trim()}. Use their name naturally when appropriate. "
+          : '';
+      final systemPreamble =
           'You are Claw, the on-device assistant inside PocketClaw on Android. '
           'You run locally and offline. '
+          '$nameLine'
           'Match your answer length to the question: brief for simple questions, '
           'detailed when the user clearly wants depth, code when code is asked for. '
           'Prefer plain answers over preambles; never restate the question. '

@@ -366,7 +366,7 @@ class _ProgressStep extends StatelessWidget {
               const SizedBox(height: 12),
               Text(
                 isError
-                    ? "Couldn't download Claw. Check your connection and try again."
+                    ? "Couldn't finish setting up. Check your connection and try again."
                     : _subtitleFor(state),
                 style: theme.textTheme.bodyMedium?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
@@ -432,17 +432,17 @@ class _ProgressStep extends StatelessWidget {
     final embedder = GemmaService.instance.embedderState.value;
     switch (state) {
       case GemmaState.installing:
-        return "We're fetching Claw's main brain (1.5 GB). This takes a few minutes — feel free to leave the screen on.";
+        return "Downloading Claw (about 1.5 GB). This takes a few minutes — you can leave the screen on.";
       case GemmaState.loading:
       case GemmaState.installed:
         if (embedder == EmbedderState.installing) {
-          return "Bringing Claw to life and downloading the document understanding brain (110 MB) in parallel…";
+          return "Almost ready. Setting things up so Claw can read documents too…";
         }
-        return 'Bringing Claw to life. Just a few seconds…';
+        return 'Almost ready. Just a few seconds…';
       case GemmaState.ready:
       case GemmaState.generating:
         if (embedder == EmbedderState.installing) {
-          return 'Almost done — finishing the document understanding download…';
+          return 'Almost done — finishing the last bit of setup…';
         }
         return 'Tap to start chatting.';
       default:
