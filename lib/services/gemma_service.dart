@@ -26,6 +26,17 @@ enum GemmaState {
   error, // something broke; check `lastError`
 }
 
+/// Embedder lifecycle. Independent of GemmaState because the embedder
+/// is a separate model (Gecko 110M tflite + sentencepiece tokenizer).
+/// The chat model (Gemma 4 E2B) can be ready while the embedder is
+/// still downloading, and vice versa.
+enum EmbedderState {
+  notInstalled,
+  installing,
+  installed, // files on disk, plugin's active embedder spec set
+  error,
+}
+
 class GemmaService {
   // ── Singleton plumbing ─────────────────────────────────────────────────
 
@@ -67,6 +78,26 @@ class GemmaService {
   // load() fails with "No active inference model set". Bug reproduced
   // 2026-05-21 in the onboarding flow.
   bool _pluginInstallDone = false;
+
+  // Same logic for the embedder. The plugin tracks an "active embedding
+  // model" separately from the inference model; both need install() to
+  // register, even when files are already on disk.
+  bool _embedderInstallDone = false;
+
+  // Cached embedder instance (loaded once, reused). Lazily created in
+  // getEmbedder() so we don't pay the cost during onboarding.
+  fg.EmbeddingModel? _embedder;
+
+  // Public state for the embedder. Watch this from RAG-related UI.
+  final ValueNotifier<EmbedderState> _embedderState =
+      ValueNotifier(EmbedderState.notInstalled);
+  ValueListenable<EmbedderState> get embedderState => _embedderState;
+
+  // Download progress for the embedder install (0..100). Independent of
+  // the main download progress so onboarding can show both if desired.
+  final ValueNotifier<int> _embedderDownloadProgress = ValueNotifier(0);
+  ValueListenable<int> get embedderDownloadProgress =>
+      _embedderDownloadProgress;
 
   // The loaded model instance from flutter_gemma. Null until loaded.
   // `_` prefix = file-private. `InferenceModel?` because it's nullable
@@ -182,6 +213,73 @@ class GemmaService {
     }
     await load();
   }
+
+  /// Install the embedder (Gecko 110M + sentencepiece tokenizer).
+  ///
+  /// Idempotent — safe to call multiple times. On a warm start where the
+  /// files are already on disk, the plugin skips the download and just
+  /// registers the active embedder spec.
+  ///
+  /// Onboarding calls this AFTER the main inference model install so the
+  /// user sees two progress bars in sequence rather than two overlapping
+  /// downloads. (Same SmartDownloader queue under the hood — parallel
+  /// downloads would only fight for bandwidth, not save time.)
+  ///
+  /// Throws [GemmaException] on failure; transitions [embedderState] to
+  /// error.
+  Future<void> installEmbedder() async {
+    if (_embedderInstallDone) return;
+    if (_embedderState.value == EmbedderState.installing) return;
+    if (_embedderState.value == EmbedderState.installed) {
+      _embedderInstallDone = true;
+      return;
+    }
+    try {
+      _embedderState.value = EmbedderState.installing;
+      _embedderDownloadProgress.value = 0;
+
+      await fg.FlutterGemma.installEmbedder()
+          .modelFromNetwork(GemmaConfig.embeddingModelUrl)
+          .tokenizerFromNetwork(GemmaConfig.embeddingTokenizerUrl)
+          .withModelProgress((p) {
+            _embedderDownloadProgress.value = p;
+          })
+          .install();
+
+      _embedderInstallDone = true;
+      _embedderState.value = EmbedderState.installed;
+      debugPrint('🐾 GEMMA: embedder installed and active');
+    } catch (e, stack) {
+      _embedderState.value = EmbedderState.error;
+      debugPrint('🐾 GEMMA: installEmbedder() failed: $e\n$stack');
+      throw GemmaException('Failed to install Gecko embedder', e);
+    }
+  }
+
+  /// Lazily fetch (and cache) the active embedder instance. Throws if the
+  /// embedder hasn't been installed yet — call [installEmbedder] first.
+  ///
+  /// The first call constructs the [EmbeddingModel] from the active spec,
+  /// which is cheap (~tens of ms — no GPU allocation, unlike inference
+  /// model load). Subsequent calls return the cached instance.
+  Future<fg.EmbeddingModel> getEmbedder() async {
+    final cached = _embedder;
+    if (cached != null) return cached;
+    if (_embedderState.value != EmbedderState.installed) {
+      throw const GemmaException(
+        'Embedder not installed. Call installEmbedder() first.',
+      );
+    }
+    try {
+      final model = await fg.FlutterGemma.getActiveEmbedder();
+      _embedder = model;
+      return model;
+    } catch (e, stack) {
+      debugPrint('🐾 GEMMA: getEmbedder() failed: $e\n$stack');
+      throw GemmaException('Failed to load embedder', e);
+    }
+  }
+
 
   Future<bool> isInstalled() async {
     try {

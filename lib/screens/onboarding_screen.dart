@@ -83,9 +83,30 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   Future<void> _startBootstrap() async {
     if (_bootstrapStarted) return;
     _bootstrapStarted = true;
+
+    // We sequence the downloads but parallelize what makes sense:
+    //   1. ensureInstalled() — downloads Gemma 4 E2B (1.5 GB)
+    //   2. ensureLoaded() — pushes weights to GPU (~10-18s, NO disk I/O)
+    //   3. installEmbedder() — downloads Gecko 110M (110 MB)
+    //
+    // Steps 2 and 3 run concurrently: GPU loading the inference model
+    // doesn't touch the network, and downloading the embedder doesn't
+    // touch the GPU. Net effect: the embedder download is hidden by the
+    // model load wait that the user would see anyway. Free 7s saving.
+
     try {
+      // Step 1: download + register inference model.
       await GemmaService.instance.ensureInstalled();
-      await GemmaService.instance.ensureLoaded();
+
+      // Step 2 + 3 in parallel.
+      final loadFuture = GemmaService.instance.ensureLoaded();
+      final embedderFuture = GemmaService.instance.installEmbedder();
+
+      // We await both. If either throws, the catch block handles it.
+      // Use Future.wait with eagerError:false so a slow embedder doesn't
+      // mask a load error and vice versa — we'll see whichever finishes
+      // first via state listeners.
+      await Future.wait([loadFuture, embedderFuture], eagerError: false);
     } catch (e) {
       // Errors propagate via GemmaService.state -> we render an error
       // banner on step 3. Nothing else to do here.
@@ -408,14 +429,21 @@ class _ProgressStep extends StatelessWidget {
   }
 
   String _subtitleFor(GemmaState state) {
+    final embedder = GemmaService.instance.embedderState.value;
     switch (state) {
       case GemmaState.installing:
-        return "We're fetching Claw's brain. This takes a few minutes — feel free to leave the screen on.";
+        return "We're fetching Claw's main brain (1.5 GB). This takes a few minutes — feel free to leave the screen on.";
       case GemmaState.loading:
       case GemmaState.installed:
+        if (embedder == EmbedderState.installing) {
+          return "Bringing Claw to life and downloading the document understanding brain (110 MB) in parallel…";
+        }
         return 'Bringing Claw to life. Just a few seconds…';
       case GemmaState.ready:
       case GemmaState.generating:
+        if (embedder == EmbedderState.installing) {
+          return 'Almost done — finishing the document understanding download…';
+        }
         return 'Tap to start chatting.';
       default:
         return 'Setting things up…';

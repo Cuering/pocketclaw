@@ -52,4 +52,24 @@ abstract class GemmaConfig {
   // GPU backend is ~5-7x faster than CPU on phones (per flutter_gemma docs).
   // On devices without GPU support, the plugin auto-falls-back to CPU.
   static const PreferredBackend preferredBackend = PreferredBackend.gpu;
+
+  // ── Embedding model (Gecko 110M EN, quantized) ────────────────────────
+  //
+  // For RAG (document Q&A). Lives in the same litert-community repo as
+  // our Gemma 4 mirror — public, no HF token required (verified
+  // 2026-05-21). The plugin ships an EmbeddingModel enum but its
+  // gecko110M URL is stale (404); we bypass it and pass the URL directly.
+  //
+  // 110 MB on top of Gemma 4 E2B's 1.5 GB = ~7% extra download. Worth it
+  // for on-device document retrieval.
+  static const String embeddingModelUrl =
+      'https://huggingface.co/litert-community/Gecko-110m-en/resolve/main/Gecko_1024_quant.tflite';
+
+  static const String embeddingTokenizerUrl =
+      'https://huggingface.co/litert-community/Gecko-110m-en/resolve/main/sentencepiece.model';
+
+  // Embedding output dimension. Gecko 110M produces 768-dim vectors;
+  // we pass this to the vector store on first init (it auto-detects,
+  // but having it explicit makes debugging clearer).
+  static const int embeddingDimension = 768;
 }
