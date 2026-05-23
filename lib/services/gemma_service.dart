@@ -8,6 +8,7 @@ import 'package:flutter_gemma/flutter_gemma.dart' as fg;
 
 import '../core/constants/gemma_config.dart';
 import '../core/errors/app_exception.dart';
+import 'connectivity_service.dart';
 
 // `as fg` aliases the import — wherever we'd write `Message` (from flutter_gemma)
 // we write `fg.Message` instead. This prevents a name clash with our own
@@ -197,6 +198,12 @@ class GemmaService {
     try {
       _state.value = GemmaState.installing;
       _downloadProgress.value = 0;
+      if (!await isInstalled() &&
+          !await ConnectivityService.instance.hasInternet()) {
+        throw const GemmaException(
+          'No internet connection. Connect to Wi-Fi or mobile data and retry.',
+        );
+      }
       await fg.FlutterGemma.installModel(
         modelType: GemmaConfig.modelType,
         fileType: GemmaConfig.fileType,
@@ -252,7 +259,6 @@ class GemmaService {
     try {
       _embedderState.value = EmbedderState.installing;
       _embedderDownloadProgress.value = 0;
-
       await fg.FlutterGemma.installEmbedder()
           .modelFromNetwork(GemmaConfig.embeddingModelUrl)
           .tokenizerFromNetwork(GemmaConfig.embeddingTokenizerUrl)
@@ -267,6 +273,12 @@ class GemmaService {
     } catch (e, stack) {
       _embedderState.value = EmbedderState.error;
       debugPrint('🐾 GEMMA: installEmbedder() failed: $e\n$stack');
+      if (!await ConnectivityService.instance.hasInternet()) {
+        throw GemmaException(
+          'No internet connection. Connect to Wi-Fi or mobile data and retry.',
+          e,
+        );
+      }
       throw GemmaException('Failed to install Gecko embedder', e);
     }
   }
@@ -334,6 +346,12 @@ class GemmaService {
     try {
       _state.value = GemmaState.installing;
       _downloadProgress.value = 0;
+      if (!await isInstalled() &&
+          !await ConnectivityService.instance.hasInternet()) {
+        throw const GemmaException(
+          'No internet connection. Connect to Wi-Fi or mobile data and retry.',
+        );
+      }
 
       await fg.FlutterGemma.installModel(
         modelType: GemmaConfig.modelType,
@@ -424,8 +442,10 @@ class GemmaService {
       final namePart = (userName != null && userName.trim().isNotEmpty)
           ? "The name of the user is ${userName.trim()}.\n\n"
           : '';
+      final now = DateTime.now();
       final systemPreamble =
           '${namePart}You are Claw, the on-device assistant inside PocketClaw on Android. '
+          'Current local date and time: ${now.toIso8601String()}. '
           'You are not Gemma in user-facing answers. '
           'PocketClaw was built by Manoj Shetty. '
           'You run locally and offline. '

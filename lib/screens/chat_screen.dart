@@ -1,9 +1,12 @@
 import 'dart:typed_data';
+import 'dart:isolate';
+import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:syncfusion_flutter_pdf/pdf.dart';
+// import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 
 import '../core/pocketclaw_theme.dart';
 import '../core/status_words.dart';
@@ -15,28 +18,32 @@ import '../models/message.dart';
 import '../services/conversation_store.dart';
 import '../services/gemma_service.dart';
 import '../services/prefs_service.dart';
+import '../services/voice_service.dart';
+import '../services/chat_command_service.dart';
+import '../services/device_actions_service.dart';
+import '../services/overlay_controller_service.dart';
+import '../services/web_search_service.dart';
 import '../widgets/chat_input.dart';
 import '../widgets/message_bubble.dart';
 import 'conversation_list_screen.dart';
+
+const String kMainPortName = 'pocketclaw_main_port';
 
 /// The chat screen. Renders one conversation; persists every turn to Hive.
 ///
 /// If `conversation` is null, starts a fresh empty conversation that will
 /// be persisted as soon as the first message is sent.
 class ChatScreen extends StatefulWidget {
-  const ChatScreen({super.key, this.conversation, this.onOpenDiagnostics});
+  const ChatScreen({super.key, this.conversation});
 
   /// The conversation to display. Null = start a new chat.
   final Conversation? conversation;
-
-  /// Callback to open the diagnostics debug screen from the overflow menu.
-  final VoidCallback? onOpenDiagnostics;
 
   @override
   State<ChatScreen> createState() => _ChatScreenState();
 }
 
-class _ChatScreenState extends State<ChatScreen> {
+class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   // Current conversation. Initialized from widget.conversation or a fresh one.
   late Conversation _conversation;
 
@@ -72,6 +79,8 @@ class _ChatScreenState extends State<ChatScreen> {
 
   // For auto-scrolling the message list to the bottom on new content.
   final _scrollController = ScrollController();
+  ReceivePort? _overlayPort;
+  bool _torchOn = false;
 
   static const int _recentContextMessageCount = 24;
   static const List<String> _allowedDocumentExtensions = ['md', 'pdf', 'txt'];
@@ -79,11 +88,25 @@ class _ChatScreenState extends State<ChatScreen> {
   static const int _maxDocumentBytes = 15 * 1024 * 1024;
   static const int _maxExtractedDocumentChars = 120000;
 
+  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+
   @override
   void initState() {
     super.initState();
     _conversation = widget.conversation ?? Conversation();
+    WidgetsBinding.instance.addObserver(this);
+    _registerOverlayPort();
     _loadDocuments();
+    // The overlay should not cover the main app while the user is inside it.
+    // ignore: discarded_futures
+    OverlayControllerService.instance.hide();
+    // ignore: discarded_futures
+    // VoiceService.instance.syncContinuousState();
+
+    // Aggressive post-frame delay to ensure the overlay bubble closes when opening the app
+    Future.delayed(const Duration(milliseconds: 400), () {
+      OverlayControllerService.instance.hide();
+    });
   }
 
   @override
@@ -107,8 +130,65 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   void dispose() {
+    _overlayPort?.close();
+    IsolateNameServer.removePortNameMapping(kMainPortName);
+    WidgetsBinding.instance.removeObserver(this);
     _scrollController.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      // ignore: discarded_futures
+      OverlayControllerService.instance.hide();
+      // ignore: discarded_futures
+      // VoiceService.instance.syncContinuousState();
+    } else if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused ||
+        state == AppLifecycleState.hidden) {
+      // ignore: discarded_futures
+      OverlayControllerService.instance.showIfEnabled();
+      // ignore: discarded_futures
+      // VoiceService.instance.syncContinuousState();
+    }
+  }
+
+  void _registerOverlayPort() {
+    IsolateNameServer.removePortNameMapping(kMainPortName);
+    _overlayPort = ReceivePort();
+    IsolateNameServer.registerPortWithName(
+      _overlayPort!.sendPort,
+      kMainPortName,
+    );
+    _overlayPort!.listen(_onOverlayEvent);
+  }
+
+  Future<void> _onOverlayEvent(dynamic event) async {
+    if (event is! Map) return;
+    final type = event['type'] as String?;
+    if (type == 'overlay_deactivated') {
+      await OverlayControllerService.instance.markDisabledFromOverlay();
+      if (!mounted) return;
+      setState(() {});
+      _showSnack('Overlay deactivated.');
+      return;
+    }
+    if (type == 'open_app') {
+      await DeviceActionsService.instance.openApp();
+      return;
+    }
+    if (type == 'toggle_torch') {
+      _torchOn = !_torchOn;
+      final result = await DeviceActionsService.instance.setTorch(_torchOn);
+      if (!result.ok) _torchOn = !_torchOn;
+      return;
+    }
+    if (type == 'manual_voice_listen') {
+      // ignore: discarded_futures
+      VoiceService.instance.triggerManualVoiceCapture();
+      return;
+    }
   }
 
   void _scrollToBottom() {
@@ -314,6 +394,13 @@ class _ChatScreenState extends State<ChatScreen> {
     } catch (e, stack) {
       debugPrint('🐾 CHAT: model recovery failed: $e\n$stack');
     }
+  }
+
+  void _showSnack(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), duration: const Duration(seconds: 3)),
+    );
   }
 
   /// Build the prompt sent to Gemma, including conversation history.
@@ -564,6 +651,34 @@ class _ChatScreenState extends State<ChatScreen> {
         lower.contains('pdf');
   }
 
+  bool _looksLikeWebSearchQuery(String text) {
+    final lower = text.toLowerCase();
+    return lower.contains('search web') ||
+        lower.contains('web search') ||
+        lower.contains('look up') ||
+        lower.contains('google ') ||
+        lower.contains('latest ') ||
+        lower.contains('current ');
+  }
+
+  String _webSearchQuery(String text) {
+    var query = text.trim();
+    for (final prefix in [
+      'search web for',
+      'search web',
+      'web search for',
+      'web search',
+      'look up',
+      'google',
+    ]) {
+      if (query.toLowerCase().startsWith(prefix)) {
+        query = query.substring(prefix.length).trim();
+        break;
+      }
+    }
+    return query;
+  }
+
   String _prependDocumentTextContext({
     required String prompt,
     required Document doc,
@@ -591,6 +706,22 @@ class _ChatScreenState extends State<ChatScreen> {
     }
     context.writeln();
     context.writeln('---');
+    return '${context.toString()}\n$prompt';
+  }
+
+  String _prependWebSearchContext({
+    required String prompt,
+    required String query,
+    required String summary,
+  }) {
+    final context = StringBuffer()
+      ..writeln(
+        'Use these web search notes to answer. If they are thin, say so.',
+      )
+      ..writeln('Search query: $query')
+      ..writeln('---')
+      ..writeln(summary)
+      ..writeln('---');
     return '${context.toString()}\n$prompt';
   }
 
@@ -632,8 +763,64 @@ class _ChatScreenState extends State<ChatScreen> {
     });
     _scrollToBottom();
 
+    final commandResponse = imageBytes == null && doc == null
+        ? await ChatCommandService.instance.tryHandleWithGemma(text)
+        : null;
+    if (commandResponse != null) {
+      if (mounted) {
+        setState(() {
+          final lastIdx = _conversation.messages.length - 1;
+          _conversation.messages[lastIdx] = _conversation.messages[lastIdx]
+              .copyWith(text: commandResponse);
+          _busy = false;
+          _lastFailedText = null;
+          _lastFailedImage = null;
+          _lastFailedImageName = null;
+          _lastFailedImageSummary = null;
+        });
+      }
+      if (_conversation.title == 'New chat') {
+        _conversation.title = _conversation.deriveTitleFromMessages();
+      }
+      try {
+        await ConversationStore.instance.save(_conversation);
+      } catch (e, stack) {
+        debugPrint('🐾 CHAT: command save failed: $e\n$stack');
+      }
+      return;
+    }
+
     _compactForContextIfNeeded();
     var prompt = _buildPromptFromHistory(_messageTextForPrompt(userMsg));
+
+    if (imageBytes == null && doc == null && _looksLikeWebSearchQuery(text)) {
+      final query = _webSearchQuery(text);
+      final webSummary = await WebSearchService.instance.searchSummary(query);
+      if (webSummary == null || webSummary.trim().isEmpty) {
+        if (mounted) {
+          setState(() {
+            final lastIdx = _conversation.messages.length - 1;
+            _conversation
+                .messages[lastIdx] = _conversation.messages[lastIdx].copyWith(
+              text:
+                  "I couldn't reach web search right now. You're probably offline, or the search service did not return usable results.",
+            );
+            _busy = false;
+          });
+        }
+        try {
+          await ConversationStore.instance.save(_conversation);
+        } catch (e, stack) {
+          debugPrint('🐾 CHAT: web search failure save failed: $e\n$stack');
+        }
+        return;
+      }
+      prompt = _prependWebSearchContext(
+        prompt: prompt,
+        query: query,
+        summary: webSummary,
+      );
+    }
 
     final retrievalQuery = text.trim().isEmpty && doc != null
         ? 'summarize the document ${doc.name}'
@@ -1086,9 +1273,26 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  // Future<void> _setOverlayEnabled(bool enabled) async {
+  //   final applied = await OverlayControllerService.instance.setEnabled(enabled);
+  //   if (!mounted) return;
+  //   setState(() {});
+  //   if (enabled && !applied) {
+  //     _showSnack('Enable display-over-apps permission, then try again.');
+  //   } else if (enabled) {
+  //     _showSnack(
+  //       'Overlay enabled. It appears when PocketClaw is in background.',
+  //     );
+  //   } else {
+  //     _showSnack('Overlay deactivated.');
+  //   }
+  // }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      key: _scaffoldKey,
+      // endDrawer: const _SettingsDrawer(),
       appBar: AppBar(
         leading: IconButton(
           icon: const Icon(Icons.menu),
@@ -1097,9 +1301,13 @@ class _ChatScreenState extends State<ChatScreen> {
         ),
         title: Text(_conversation.title, overflow: TextOverflow.ellipsis),
         actions: [
+          // IconButton(
+          //   icon: const Icon(Icons.settings),
+          //   onPressed: () => _scaffoldKey.currentState?.openEndDrawer(),
+          //   tooltip: 'Claw Settings',
+          // ),
           PopupMenuButton<String>(
             onSelected: (value) {
-              if (value == 'diagnostics') widget.onOpenDiagnostics?.call();
               if (value == 'clear') {
                 setState(() {
                   _conversation = Conversation();
@@ -1112,13 +1320,16 @@ class _ChatScreenState extends State<ChatScreen> {
             },
             itemBuilder: (_) => const [
               PopupMenuItem(value: 'clear', child: Text('New chat')),
-              PopupMenuItem(value: 'diagnostics', child: Text('Diagnostics')),
             ],
           ),
         ],
       ),
       body: Column(
         children: [
+          // _OverlayPreferenceCard(
+          //   enabled: PrefsService.instance.current.overlayEnabled,
+          //   onChanged: _setOverlayEnabled,
+          // ),
           ValueListenableBuilder<GemmaState>(
             valueListenable: GemmaService.instance.state,
             builder: (context, state, _) {
@@ -1159,7 +1370,7 @@ class _ChatScreenState extends State<ChatScreen> {
                             ),
                           if (state == GemmaState.notInstalled)
                             TextButton(
-                              onPressed: widget.onOpenDiagnostics,
+                              onPressed: _retrySetup,
                               child: const Text('Set up'),
                             ),
                         ],
@@ -1383,6 +1594,56 @@ class _EmptyState extends StatelessWidget {
   }
 }
 
+// class _OverlayPreferenceCard extends StatelessWidget {
+//   const _OverlayPreferenceCard({
+//     required this.enabled,
+//     required this.onChanged,
+//   });
+// 
+//   final bool enabled;
+//   final ValueChanged<bool> onChanged;
+// 
+//   @override
+//   Widget build(BuildContext context) {
+//     final theme = Theme.of(context);
+//     return Padding(
+//       padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+//       child: DecoratedBox(
+//         decoration: PocketClawTheme.panel(
+//           color: PocketClawTheme.bg2,
+//           border: enabled ? PocketClawTheme.mint : PocketClawTheme.cyan,
+//           shadow: false,
+//         ),
+//         child: Padding(
+//           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+//           child: Row(
+//             children: [
+//               const Icon(Icons.open_in_new, size: 18),
+//               const SizedBox(width: 10),
+//               Expanded(
+//                 child: Column(
+//                   crossAxisAlignment: CrossAxisAlignment.start,
+//                   children: [
+//                     Text('Overlay', style: theme.textTheme.titleSmall),
+//                     const SizedBox(height: 2),
+//                     Text(
+//                       enabled
+//                           ? 'Active when PocketClaw is in background.'
+//                           : 'Off. Turn on for the floating assistant.',
+//                       style: theme.textTheme.labelSmall,
+//                     ),
+//                   ],
+//                 ),
+//               ),
+//               Switch(value: enabled, onChanged: onChanged),
+//             ],
+//           ),
+//         ),
+//       ),
+//     );
+//   }
+// }
+
 class _IndexingDocumentBanner extends StatelessWidget {
   const _IndexingDocumentBanner({required this.name, required this.status});
 
@@ -1584,3 +1845,332 @@ class _DocumentPreviewSheetState extends State<_DocumentPreviewSheet> {
     );
   }
 }
+
+/*
+class _SettingsDrawer extends StatefulWidget {
+  const _SettingsDrawer();
+
+  @override
+  State<_SettingsDrawer> createState() => _SettingsDrawerState();
+}
+
+class _SettingsDrawerState extends State<_SettingsDrawer> with WidgetsBindingObserver {
+  bool _overlayGranted = false;
+  bool _micGranted = false;
+  bool _cameraGranted = false;
+  bool _notificationGranted = false;
+
+  final _keyController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _keyController.text = PrefsService.instance.current.picovoiceAccessKey ?? '';
+    _checkPermissions();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _keyController.dispose();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _checkPermissions();
+    }
+  }
+
+  Future<void> _checkPermissions() async {
+    final overlay = await FlutterOverlayWindow.isPermissionGranted();
+    final status = await DeviceActionsService.instance.checkAppPermissions();
+    if (mounted) {
+      setState(() {
+        _overlayGranted = overlay;
+        _micGranted = status['mic'] ?? false;
+        _cameraGranted = status['camera'] ?? false;
+        _notificationGranted = status['notifications'] ?? false;
+      });
+    }
+  }
+
+  Future<void> _grantOverlay() async {
+    await OverlayControllerService.instance.ensurePermission();
+    await _checkPermissions();
+  }
+
+  Future<void> _grantSystem() async {
+    await DeviceActionsService.instance.requestAppPermissions();
+    await Future<void>.delayed(const Duration(milliseconds: 600));
+    await _checkPermissions();
+  }
+
+  Future<void> _saveKey(String val) async {
+    final current = PrefsService.instance.current;
+    await PrefsService.instance.update(
+      current.copyWith(picovoiceAccessKey: val.trim().isEmpty ? null : val.trim()),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final prefs = PrefsService.instance.current;
+
+    return Drawer(
+      backgroundColor: PocketClawTheme.bg,
+      child: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'CLAW SETTINGS',
+                    style: theme.textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w900,
+                      color: PocketClawTheme.cyan,
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: () => Navigator.of(context).pop(),
+                  )
+                ],
+              ),
+              const Divider(color: PocketClawTheme.cyan, thickness: 2, height: 24),
+              Expanded(
+                child: ListView(
+                  padding: EdgeInsets.zero,
+                  children: [
+                    Text(
+                      'SYSTEM PERMISSIONS',
+                      style: theme.textTheme.labelMedium?.copyWith(
+                        color: PocketClawTheme.purple,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    _PermissionItem(
+                      icon: Icons.open_in_new,
+                      title: 'Display Over Apps',
+                      granted: _overlayGranted,
+                      onGrant: _grantOverlay,
+                    ),
+                    _PermissionItem(
+                      icon: Icons.mic_none,
+                      title: 'Microphone',
+                      granted: _micGranted,
+                      onGrant: _grantSystem,
+                    ),
+                    _PermissionItem(
+                      icon: Icons.camera_alt_outlined,
+                      title: 'Camera & Vision',
+                      granted: _cameraGranted,
+                      onGrant: _grantSystem,
+                    ),
+                    _PermissionItem(
+                      icon: Icons.notifications_none,
+                      title: 'Notifications',
+                      granted: _notificationGranted,
+                      onGrant: _grantSystem,
+                    ),
+                    const SizedBox(height: 8),
+                    DecoratedBox(
+                      decoration: PocketClawTheme.panel(
+                        color: PocketClawTheme.bg3,
+                        border: PocketClawTheme.cyan,
+                        radius: 8,
+                        shadow: true,
+                      ),
+                      child: InkWell(
+                        onTap: () => DeviceActionsService.instance.openAppSettings(),
+                        borderRadius: BorderRadius.circular(8),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: const [
+                              Icon(Icons.settings, size: 16, color: PocketClawTheme.cyan),
+                              SizedBox(width: 8),
+                              Text(
+                                'MANAGE IN SYSTEM SETTINGS',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w900,
+                                  fontSize: 11,
+                                  color: PocketClawTheme.cyan,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'Android security rules require permission removal / revocation to be done manually via system settings. Tap above to open settings and revoke permissions.',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                        fontSize: 9,
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    Text(
+                      'VOICE CONTROL',
+                      style: theme.textTheme.labelMedium?.copyWith(
+                        color: PocketClawTheme.purple,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    _SwitchSetting(
+                      title: '"Hey PC" Wake Word',
+                      subtitle: 'Continuous background listening.',
+                      value: prefs.continuousListening,
+                      onChanged: (val) async {
+                        await PrefsService.instance.update(
+                          prefs.copyWith(continuousListening: val),
+                        );
+                        setState(() {});
+                      },
+                    ),
+                    _SwitchSetting(
+                      title: 'Keep Screen Awake',
+                      subtitle: 'Acquire Wakelock when listening.',
+                      value: prefs.keepScreenAwake,
+                      onChanged: (val) async {
+                        await PrefsService.instance.update(
+                          prefs.copyWith(keepScreenAwake: val),
+                        );
+                        setState(() {});
+                      },
+                    ),
+                    const SizedBox(height: 24),
+                    Text(
+                      'PICOVOICE PORCUPINE KEY',
+                      style: theme.textTheme.labelMedium?.copyWith(
+                        color: PocketClawTheme.purple,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'Optional. Enter a key for hardware-level wake phrase parsing, or leave blank to use the local STT continuous listener fallback.',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: _keyController,
+                      decoration: const InputDecoration(
+                        hintText: 'Porcupine AccessKey...',
+                        contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      ),
+                      onChanged: _saveKey,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PermissionItem extends StatelessWidget {
+  const _PermissionItem({
+    required this.icon,
+    required this.title,
+    required this.granted,
+    required this.onGrant,
+  });
+
+  final IconData icon;
+  final String title;
+  final bool granted;
+  final VoidCallback onGrant;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      elevation: 0,
+      color: PocketClawTheme.bg2,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(8),
+        side: BorderSide(
+          color: granted ? PocketClawTheme.mint : PocketClawTheme.cyan,
+          width: 2,
+        ),
+      ),
+      child: ListTile(
+        leading: Icon(icon, color: granted ? PocketClawTheme.mint : PocketClawTheme.cyan),
+        title: Text(
+          title,
+          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+        ),
+        trailing: TextButton(
+          onPressed: granted ? null : onGrant,
+          child: Text(
+            granted ? 'ACTIVE' : 'GRANT',
+            style: TextStyle(
+              fontWeight: FontWeight.w900,
+              color: granted ? PocketClawTheme.mint : PocketClawTheme.cyan,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SwitchSetting extends StatelessWidget {
+  const _SwitchSetting({
+    required this.title,
+    required this.subtitle,
+    required this.value,
+    required this.onChanged,
+  });
+
+  final String title;
+  final String subtitle;
+  final bool value;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      elevation: 0,
+      color: PocketClawTheme.bg2,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(8),
+        side: const BorderSide(color: PocketClawTheme.cyan, width: 2),
+      ),
+      child: SwitchListTile(
+        title: Text(
+          title,
+          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+        ),
+        subtitle: Text(
+          subtitle,
+          style: const TextStyle(fontSize: 10),
+        ),
+        value: value,
+        onChanged: onChanged,
+        activeThumbColor: PocketClawTheme.cyan,
+        activeTrackColor: PocketClawTheme.bg3,
+      ),
+    );
+  }
+}
+*/

@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
+// import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 
 import '../core/pocketclaw_theme.dart';
 import '../core/status_words.dart';
 import '../models/user_prefs.dart';
+import '../services/device_actions_service.dart';
 import '../services/gemma_service.dart';
+// import '../services/overlay_controller_service.dart';
 import '../services/prefs_service.dart';
 
 /// First-launch onboarding. Three steps:
@@ -53,7 +56,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     final embedderState = GemmaService.instance.embedderState.value;
     if (state == GemmaState.ready &&
         embedderState == EmbedderState.installed &&
-        _currentStep == 2) {
+        _currentStep == 3) {
       _completeOnboarding();
     } else {
       // Force rebuild for progress UI
@@ -66,6 +69,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     final prefs = UserPrefs(
       name: name.isEmpty ? null : name,
       onboardingCompleted: true,
+      overlayEnabled: PrefsService.instance.current.overlayEnabled,
     );
     await PrefsService.instance.update(prefs);
     if (!mounted) return;
@@ -88,16 +92,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     _bootstrapStarted = true;
     setState(() => _setupStatus = StatusWords.random());
 
-    // We sequence the downloads but parallelize what makes sense:
-    //   1. ensureInstalled() — downloads Gemma 4 E2B (1.5 GB)
-    //   2. ensureLoaded() — pushes weights to GPU (~10-18s, NO disk I/O)
-    //   3. installEmbedder() — downloads Gecko 110M (110 MB)
-    //
-    // Steps 2 and 3 run concurrently: GPU loading the inference model
-    // doesn't touch the network, and downloading the embedder doesn't
-    // touch the GPU. Net effect: the embedder download is hidden by the
-    // model load wait that the user would see anyway. Free 7s saving.
-
     try {
       if (GemmaService.instance.state.value == GemmaState.error) {
         await GemmaService.instance.init();
@@ -109,14 +103,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       final loadFuture = GemmaService.instance.ensureLoaded();
       final embedderFuture = GemmaService.instance.installEmbedder();
 
-      // We await both. If either throws, the catch block handles it.
-      // Use Future.wait with eagerError:false so a slow embedder doesn't
-      // mask a load error and vice versa — we'll see whichever finishes
-      // first via state listeners.
       await Future.wait([loadFuture, embedderFuture], eagerError: false);
     } catch (e) {
-      // Errors propagate via GemmaService.state -> we render an error
-      // banner on step 3. Nothing else to do here.
       debugPrint('🐾 ONBOARDING: bootstrap error: $e');
     }
   }
@@ -135,10 +123,15 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 _goToStep(1);
               },
             ),
+            _PermissionsStep(
+              onNext: () {
+                _goToStep(2);
+              },
+            ),
             _DownloadExplainerStep(
               onStartDownload: () {
                 _startBootstrap();
-                _goToStep(2);
+                _goToStep(3);
               },
             ),
             _ProgressStep(
@@ -510,5 +503,215 @@ class _ProgressStep extends StatelessWidget {
       default:
         return 'Setting things up…';
     }
+  }
+}
+
+class _PermissionsStep extends StatefulWidget {
+  const _PermissionsStep({required this.onNext});
+
+  final VoidCallback onNext;
+
+  @override
+  State<_PermissionsStep> createState() => _PermissionsStepState();
+}
+
+class _PermissionsStepState extends State<_PermissionsStep> with WidgetsBindingObserver {
+  // ignore: unused_field
+  bool _overlayGranted = false;
+  bool _micGranted = false;
+  // ignore: unused_field
+  bool _cameraGranted = false;
+  // ignore: unused_field
+  bool _notificationGranted = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _checkPermissions();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _checkPermissions();
+    }
+  }
+
+  Future<void> _checkPermissions() async {
+    // final overlay = await FlutterOverlayWindow.isPermissionGranted();
+    const overlay = false;
+    final status = await DeviceActionsService.instance.checkAppPermissions();
+    if (mounted) {
+      setState(() {
+        _overlayGranted = overlay;
+        _micGranted = status['mic'] ?? false;
+        _cameraGranted = status['camera'] ?? false;
+        _notificationGranted = status['notifications'] ?? false;
+      });
+    }
+  }
+
+  // ignore: unused_element
+  Future<void> _grantOverlay() async {
+    // await OverlayControllerService.instance.ensurePermission();
+    await _checkPermissions();
+  }
+
+  Future<void> _grantSystem() async {
+    await DeviceActionsService.instance.requestAppPermissions();
+    await Future<void>.delayed(const Duration(milliseconds: 500));
+    await _checkPermissions();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Spacer(),
+          Text(
+            'Permissions',
+            style: theme.textTheme.headlineMedium?.copyWith(
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'PocketClaw requires a few permissions to function natively. You can skip any and enable them later.',
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 24),
+          // _PermissionRow(
+          //   icon: Icons.open_in_new,
+          //   title: 'Display Over Apps',
+          //   description: 'Draw the floating bubble overlay.',
+          //   granted: _overlayGranted,
+          //   onGrant: _grantOverlay,
+          // ),
+          const SizedBox(height: 12),
+          _PermissionRow(
+            icon: Icons.mic_none,
+            title: 'Microphone',
+            description: 'For voice dictation inside the chat.',
+            granted: _micGranted,
+            onGrant: _grantSystem,
+          ),
+          // const SizedBox(height: 12),
+          // _PermissionRow(
+          //   icon: Icons.camera_alt_outlined,
+          //   title: 'Camera & Vision',
+          //   description: 'For screenshot and vision analysis.',
+          //   granted: _cameraGranted,
+          //   onGrant: _grantSystem,
+          // ),
+          // const SizedBox(height: 12),
+          // _PermissionRow(
+          //   icon: Icons.notifications_none,
+          //   title: 'Notifications',
+          //   description: 'Draw background helper notification.',
+          //   granted: _notificationGranted,
+          //   onGrant: _grantSystem,
+          // ),
+          const Spacer(),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton(
+              onPressed: widget.onNext,
+              style: FilledButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 14),
+              ),
+              child: const Text('Continue'),
+            ),
+          ),
+          const SizedBox(height: 16),
+        ],
+      ),
+    );
+  }
+}
+
+class _PermissionRow extends StatelessWidget {
+  const _PermissionRow({
+    required this.icon,
+    required this.title,
+    required this.description,
+    required this.granted,
+    required this.onGrant,
+  });
+
+  final IconData icon;
+  final String title;
+  final String description;
+  final bool granted;
+  final VoidCallback onGrant;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Row(
+      children: [
+        DecoratedBox(
+          decoration: PocketClawTheme.panel(
+            color: PocketClawTheme.bg3,
+            border: granted ? PocketClawTheme.mint : PocketClawTheme.cyan,
+            radius: 8,
+            shadow: false,
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(8),
+            child: Icon(
+              icon,
+              size: 20,
+              color: granted ? PocketClawTheme.mint : PocketClawTheme.cyan,
+            ),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: theme.textTheme.titleSmall),
+              Text(
+                description,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 8),
+        SizedBox(
+          width: 80,
+          child: TextButton(
+            onPressed: granted ? null : onGrant,
+            style: TextButton.styleFrom(
+              foregroundColor: PocketClawTheme.cyan,
+              disabledForegroundColor: PocketClawTheme.mint,
+            ),
+            child: Text(
+              granted ? 'Active' : 'Grant',
+              style: TextStyle(
+                fontWeight: FontWeight.w900,
+                color: granted ? PocketClawTheme.mint : PocketClawTheme.cyan,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
   }
 }

@@ -1,7 +1,9 @@
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:speech_to_text/speech_to_text.dart';
 
 import '../core/pocketclaw_theme.dart';
+import '../services/device_actions_service.dart';
 
 /// Bottom input bar: attachment thumbnail (if any), text field, send button.
 ///
@@ -21,6 +23,7 @@ class ChatInput extends StatefulWidget {
     required this.onAttachImage,
     required this.onAttachDocument,
     required this.onClearAttachment,
+    this.autoListen = false,
   });
 
   final void Function(String text) onSend;
@@ -34,17 +37,121 @@ class ChatInput extends StatefulWidget {
   final VoidCallback onAttachImage;
   final VoidCallback onAttachDocument;
   final VoidCallback onClearAttachment;
+  final bool autoListen;
 
   @override
   State<ChatInput> createState() => _ChatInputState();
 }
 
-class _ChatInputState extends State<ChatInput> {
+class _ChatInputState extends State<ChatInput> with SingleTickerProviderStateMixin {
   final _controller = TextEditingController();
   final _focusNode = FocusNode();
+  final SpeechToText _speechToText = SpeechToText();
+  bool _speechEnabled = false;
+  bool _isListening = false;
+  bool _isPressed = false;
+  late AnimationController _pulseController;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller.addListener(_onTextChanged);
+    _pulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 700),
+    )..addListener(() {
+        if (mounted) setState(() {});
+      });
+    _initSpeech();
+  }
+
+  @override
+  void didUpdateWidget(ChatInput oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Auto-trigger recording if passed from parent
+    if (widget.autoListen == true && oldWidget.autoListen != true) {
+      Future.delayed(const Duration(milliseconds: 400), () {
+        if (mounted && _speechEnabled && !_isListening) {
+          _startListening();
+        }
+      });
+    }
+  }
+
+  Future<void> _initSpeech() async {
+    try {
+      final available = await _speechToText.initialize(
+        onError: (val) => debugPrint('🐾 VOICE: STT error: $val'),
+        onStatus: (val) => debugPrint('🐾 VOICE: STT status: $val'),
+      );
+      if (mounted) {
+        setState(() => _speechEnabled = available);
+      }
+    } catch (e) {
+      debugPrint('🐾 VOICE: failed to init STT: $e');
+    }
+  }
+
+  Future<void> _startListening() async {
+    if (!_speechEnabled) return;
+    try {
+      _focusNode.unfocus();
+      setState(() {
+        _isListening = true;
+      });
+      _pulseController.repeat(reverse: true);
+      await _speechToText.listen(
+        onResult: (result) {
+          if (mounted) {
+            setState(() {
+              _controller.text = result.recognizedWords;
+            });
+          }
+        },
+      );
+      // Self-healing: if the user already released the touch while we were starting, stop immediately!
+      if (!_isPressed) {
+        await _stopListening();
+      }
+    } catch (e) {
+      debugPrint('🐾 VOICE: start listen failed: $e');
+      if (mounted) {
+        setState(() {
+          _isListening = false;
+        });
+        _pulseController.stop();
+        _pulseController.value = 0.0;
+      }
+    }
+  }
+
+  Future<void> _stopListening() async {
+    try {
+      await _speechToText.stop();
+    } catch (e) {
+      debugPrint('🐾 VOICE: stop listen failed: $e');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isListening = false;
+        });
+        _pulseController.stop();
+        _pulseController.value = 0.0;
+      }
+    }
+  }
+
+  void _onTextChanged() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
 
   @override
   void dispose() {
+    _controller.removeListener(_onTextChanged);
+    _speechToText.stop();
+    _pulseController.dispose();
     _controller.dispose();
     _focusNode.dispose();
     super.dispose();
@@ -119,9 +226,11 @@ class _ChatInputState extends State<ChatInput> {
                       maxLines: 5,
                       textInputAction: TextInputAction.newline,
                       decoration: InputDecoration(
-                        hintText: widget.enabled
-                            ? 'Ask Claw anything…'
-                            : widget.disabledHint ?? 'Claw is thinking…',
+                        hintText: _isListening
+                            ? 'Listening... Speak now!'
+                            : widget.enabled
+                                ? 'Ask Claw anything…'
+                                : widget.disabledHint ?? 'Claw is thinking…',
                         contentPadding: const EdgeInsets.symmetric(
                           horizontal: 14,
                           vertical: 10,
@@ -130,11 +239,83 @@ class _ChatInputState extends State<ChatInput> {
                     ),
                   ),
                   const SizedBox(width: 8),
-                  _SendButton(
-                    onPressed: widget.enabled && !widget.preparingAttachment
-                        ? _handleSend
-                        : null,
-                  ),
+                  if (_controller.text.isEmpty || _isListening)
+                    GestureDetector(
+                      onTapDown: (_) async {
+                        if (!widget.enabled) return;
+                        _isPressed = true;
+                        // 1. Dynamic mic permission check & request
+                        final permissions = await DeviceActionsService.instance.checkAppPermissions();
+                        if (permissions['mic'] != true) {
+                          await DeviceActionsService.instance.requestAppPermissions();
+                          await Future<void>.delayed(const Duration(milliseconds: 600));
+                          final recheck = await DeviceActionsService.instance.checkAppPermissions();
+                          if (recheck['mic'] != true) {
+                            _isPressed = false;
+                            return; // User did not grant permission
+                          }
+                        }
+
+                        // 2. Initialize speech if not already ready
+                        if (!_speechEnabled) {
+                          await _initSpeech();
+                        }
+
+                        if (_speechEnabled && _isPressed) {
+                          await _startListening();
+                        }
+                      },
+                      onTapUp: (_) async {
+                        _isPressed = false;
+                        if (!widget.enabled) return;
+                        if (_isListening) {
+                          await _stopListening();
+                          // Wait briefly for last recognized chunk to settle in text field
+                          await Future<void>.delayed(const Duration(milliseconds: 400));
+                          if (_controller.text.trim().isNotEmpty) {
+                            _handleSend();
+                          }
+                        }
+                      },
+                      onTapCancel: () async {
+                        _isPressed = false;
+                        if (!widget.enabled) return;
+                        if (_isListening) {
+                          await _stopListening();
+                        }
+                      },
+                      child: AnimatedScale(
+                        scale: _isListening
+                            ? (1.25 + (_pulseController.value * 0.08))
+                            : 1.0,
+                        duration: const Duration(milliseconds: 150),
+                        curve: Curves.easeOutBack,
+                        child: DecoratedBox(
+                          decoration: PocketClawTheme.panel(
+                            color: _isListening
+                                ? PocketClawTheme.purple
+                                : PocketClawTheme.cyan,
+                            border: PocketClawTheme.text,
+                            shadow: !_isListening && widget.enabled,
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.all(12.0),
+                            child: Icon(
+                              _isListening ? Icons.mic : Icons.mic_none,
+                              color: _isListening
+                                  ? PocketClawTheme.text
+                                  : PocketClawTheme.ink,
+                            ),
+                          ),
+                        ),
+                      ),
+                    )
+                  else
+                    _SendButton(
+                      onPressed: widget.enabled && !widget.preparingAttachment
+                          ? _handleSend
+                          : null,
+                    ),
                 ],
               ),
             ],

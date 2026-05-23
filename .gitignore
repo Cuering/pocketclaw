@@ -46,3 +46,7 @@ app.*.map.json
 pocketclaw-scratch.md
 debugging-playbook.md
 ui_design.md
+
+# Guides (PocketClaw)
+FEATURES_GUIDE.md
+REVERT_GUIDE.md

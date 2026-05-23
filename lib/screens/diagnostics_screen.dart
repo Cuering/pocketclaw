@@ -8,7 +8,7 @@ import 'dart:typed_data';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_overlay_window/flutter_overlay_window.dart';
+// import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../services/gemma_service.dart';
@@ -256,44 +256,8 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen>
   // the user toggles us on, they have to come back and tap this again.
   Future<void> _onShowOverlay() async {
     try {
-      // isPermissionGranted() returns a Future<bool>. nullable on some
-      // versions — coerce to false if null.
-      final granted = (await FlutterOverlayWindow.isPermissionGranted());
-      if (!granted) {
-        // Opens system settings. Returns once the user comes back.
-        // We don't get a callback for "permission granted" specifically —
-        // user has to retap our button after granting.
-        await FlutterOverlayWindow.requestPermission();
-        if (!mounted) return;
-        _setResponse(
-          'Permission requested. Toggle PocketClaw on in the settings '
-          'page Android just opened, then come back and tap "5. Show '
-          'Overlay" again.',
-        );
-        return;
-      }
-
-      // Permission already granted (or just got granted on this run).
-      // Show the bubble. enableDrag lets the user drag it around.
-      // height/width are in pixels; the bubble widget inside is the
-      // visible part, surrounded by a transparent hit area.
-      await FlutterOverlayWindow.showOverlay(
-        enableDrag: true,
-        height: 100,
-        width: 100,
-        alignment: OverlayAlignment.centerRight,
-        overlayTitle: 'PocketClaw',
-        overlayContent: 'Claw is listening',
-        flag: OverlayFlag.focusPointer,
-        positionGravity: PositionGravity.auto,
-
-        visibility: NotificationVisibility.visibilityPublic,
-      );
       if (!mounted) return;
-      _setResponse(
-        'Overlay shown. Drag the bubble around. Try switching to another '
-        'app — the bubble should stay on top. (Tap not wired yet — Day 5.)',
-      );
+      _setResponse('Overlay is disabled.');
     } catch (e) {
       _setResponse('Overlay failed: $e');
     }
@@ -302,7 +266,7 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen>
   // Hide the floating bubble. Useful for the demo and for clean shutdown.
   Future<void> _onHideOverlay() async {
     try {
-      await FlutterOverlayWindow.closeOverlay();
+      // await FlutterOverlayWindow.closeOverlay();
       if (!mounted) return;
       _setResponse('Overlay closed.');
     } catch (e) {
