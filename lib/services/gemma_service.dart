@@ -89,8 +89,9 @@ class GemmaService {
   fg.EmbeddingModel? _embedder;
 
   // Public state for the embedder. Watch this from RAG-related UI.
-  final ValueNotifier<EmbedderState> _embedderState =
-      ValueNotifier(EmbedderState.notInstalled);
+  final ValueNotifier<EmbedderState> _embedderState = ValueNotifier(
+    EmbedderState.notInstalled,
+  );
   ValueListenable<EmbedderState> get embedderState => _embedderState;
 
   // Download progress for the embedder install (0..100). Independent of
@@ -294,7 +295,6 @@ class GemmaService {
     }
   }
 
-
   Future<bool> isInstalled() async {
     try {
       // flutter_gemma stores models by filename derived from the URL.
@@ -326,7 +326,9 @@ class GemmaService {
   //                       error
   Future<void> install() async {
     if (_state.value == GemmaState.installing) {
-      debugPrint('🐾 GEMMA: install() called while already installing; skipping');
+      debugPrint(
+        '🐾 GEMMA: install() called while already installing; skipping',
+      );
       return;
     }
     try {
@@ -415,13 +417,16 @@ class GemmaService {
       // Create a fresh chat session for this prompt.
       // (For multi-turn we'd keep one chat and add chunks; we'll get to that.)
       final chat = await model.createChat();
-      final nameLine = (userName != null && userName.trim().isNotEmpty)
-          ? "You are talking to ${userName.trim()}. Use their name naturally when appropriate. "
+      // Name goes at the front, before everything else. Small models
+      // (Gemma 4 E2B is 2B effective) reliably pick up facts at the
+      // start of the prompt but flake on instructions buried mid-text.
+      // Just state the fact; don't coach the model on how to use it.
+      final namePart = (userName != null && userName.trim().isNotEmpty)
+          ? "The name of the user is ${userName.trim()}.\n\n"
           : '';
       final systemPreamble =
-          'You are Claw, the on-device assistant inside PocketClaw on Android. '
+          '${namePart}You are Claw, the on-device assistant inside PocketClaw on Android. '
           'You run locally and offline. '
-          '$nameLine'
           'Match your answer length to the question: brief for simple questions, '
           'detailed when the user clearly wants depth, code when code is asked for. '
           'Prefer plain answers over preambles; never restate the question. '

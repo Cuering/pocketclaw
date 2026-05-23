@@ -251,7 +251,10 @@ class _ChatScreenState extends State<ChatScreen> {
         // brought back low-quality hits), fall back to filename-anchored
         // retrieval which grabs doc starts regardless of query terms.
         final lower = text.toLowerCase();
-        final isGenericIntent = hits.isEmpty &&
+        // Generic queries also fire fallback when retrieval was sparse
+        // (1 or fewer hits) — a single tangential chunk + Gemma's training
+        // data hallucination is worse than admitting we have nothing.
+        final isGenericIntent = hits.length <= 1 &&
             (lower.contains('summari') ||
                 lower.contains('summary') ||
                 lower.contains('tldr') ||
@@ -825,18 +828,37 @@ class _DocumentChipsBar extends StatelessWidget {
 }
 
 
-class _DocumentPreviewSheet extends StatelessWidget {
+class _DocumentPreviewSheet extends StatefulWidget {
   const _DocumentPreviewSheet({required this.document});
 
   final Document document;
 
   @override
+  State<_DocumentPreviewSheet> createState() => _DocumentPreviewSheetState();
+}
+
+class _DocumentPreviewSheetState extends State<_DocumentPreviewSheet> {
+  late Future<List<RetrievedChunk>> _chunksFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _chunksFuture = RagService.instance
+        .getDocStarts(
+          conversationId: widget.document.conversationId,
+          perDocLimit: widget.document.chunkCount,
+        )
+        .then((all) =>
+            all.where((c) => c.docName == widget.document.name).toList());
+  }
+
+  @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return DraggableScrollableSheet(
-      initialChildSize: 0.5,
+      initialChildSize: 0.6,
       minChildSize: 0.3,
-      maxChildSize: 0.9,
+      maxChildSize: 0.95,
       expand: false,
       builder: (_, scrollCtrl) => Container(
         decoration: BoxDecoration(
@@ -859,22 +881,20 @@ class _DocumentPreviewSheet extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Row(
                 children: [
-                  Icon(
-                    Icons.description_outlined,
-                    color: theme.colorScheme.primary,
-                  ),
+                  Icon(Icons.description_outlined,
+                      color: theme.colorScheme.primary),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          document.name,
+                          widget.document.name,
                           style: theme.textTheme.titleMedium,
                           overflow: TextOverflow.ellipsis,
                         ),
                         Text(
-                          '${document.chunkCount} sections indexed',
+                          '${widget.document.chunkCount} sections',
                           style: theme.textTheme.bodySmall?.copyWith(
                             color: theme.colorScheme.onSurfaceVariant,
                           ),
@@ -891,36 +911,55 @@ class _DocumentPreviewSheet extends StatelessWidget {
             ),
             const Divider(),
             Expanded(
-              child: ListView(
-                controller: scrollCtrl,
-                padding: const EdgeInsets.all(16),
-                children: [
-                  Text(
-                    'Claw can answer questions about this document. Try asking:',
-                    style: theme.textTheme.bodyMedium,
-                  ),
-                  const SizedBox(height: 12),
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: theme.colorScheme.surfaceContainerHighest,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('• What is this document about?',
-                            style: theme.textTheme.bodySmall),
-                        const SizedBox(height: 4),
-                        Text('• Summarise the key points',
-                            style: theme.textTheme.bodySmall),
-                        const SizedBox(height: 4),
-                        Text('• Find any mentions of <topic>',
-                            style: theme.textTheme.bodySmall),
-                      ],
-                    ),
-                  ),
-                ],
+              child: FutureBuilder<List<RetrievedChunk>>(
+                future: _chunksFuture,
+                builder: (context, snap) {
+                  if (snap.connectionState != ConnectionState.done) {
+                    return const Center(
+                        child: Padding(
+                      padding: EdgeInsets.all(24),
+                      child: CircularProgressIndicator(),
+                    ));
+                  }
+                  final chunks = snap.data ?? const [];
+                  if (chunks.isEmpty) {
+                    return Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Text(
+                        "Couldn't load the document content.",
+                        style: theme.textTheme.bodyMedium,
+                      ),
+                    );
+                  }
+                  final sorted = [...chunks]
+                    ..sort((a, b) => a.chunkIndex.compareTo(b.chunkIndex));
+                  return ListView.separated(
+                    controller: scrollCtrl,
+                    padding: const EdgeInsets.all(16),
+                    itemCount: sorted.length,
+                    separatorBuilder: (_, _) => const Divider(height: 24),
+                    itemBuilder: (_, i) {
+                      final c = sorted[i];
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Section ${c.chunkIndex + 1}',
+                            style: theme.textTheme.labelSmall?.copyWith(
+                              color: theme.colorScheme.primary,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          SelectableText(
+                            c.content,
+                            style: theme.textTheme.bodyMedium,
+                          ),
+                        ],
+                      );
+                    },
+                  );
+                },
               ),
             ),
           ],
