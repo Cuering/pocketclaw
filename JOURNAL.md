@@ -657,10 +657,22 @@ with the same args after popping the failed pair from the conversation.
   UX, all running on-device on a Snapdragon 7s Gen 3. That's a
   shippable v1 even if we did nothing else.
 
-### Tomorrow (Day 8, Wed evening)
-- RAG implementation per docs/rag-design.md. ~4 hours fresh.
-- Gecko 110M installer, vector store init, indexing pipeline,
-  retrieval-into-prompt, 📄 attach button, test with a real .txt file
-  on device.
-- Hard stop midnight again.
+### Day 8 — May 21, 2026 (RAG Implementation)
+- **Gecko 110M Embedder Integration**: Integrated the local Gecko embedder (`Gecko_*_quant.tflite`) and tokenizer from the `litert-community` Hugging Face space. Wired up the progress listener to onboarding, providing a dual-download visual layout (Gemma 4 + Gecko).
+- **SQLite-Vec Vector Store**: Initialized the on-device SQLite vector database at startup. Implemented paragraph-based token-sensitive document chunking (splitting paragraphs, merging tiny fragments under 80 characters, and splitting long segments over 1200 characters).
+- **Retrieve & Rank Context Injection**: Integrated custom context retrieval into Gemma prompts. Configured a dynamic file-based retrieval fallback (uses the filename as query to extract document outlines) to handle general questions like "summarize this document."
+- **Soft-Fail Strategy**: Configured the RAG pipeline to soft-fail gracefully; search retrieval issues print logs but return empty lists rather than throwing exceptions, keeping the conversation stream active.
 
+### Day 9 — May 22, 2026 (Voice, Function Calling & Native Channels)
+- **Speech-to-Text & Overlay Bridging**: Integrated offline vocal inputs with the background overlay controller, enabling the floating bubble to trigger transcription.
+- **Offline Gemma Function Calling**: Created the local system semantic parser using Gemma's prompt instructions. Prompted Gemma to output structured JSON representations for hardware actions (Flashlight, Alarms, SMS, Phone Dialer, Calendar, GPS, and Web Search) with zero network dependency.
+- **Kotlin Platform Channel Interceptors**: Wired native platform intents inside `MainActivity.kt` to trigger actual physical device reactions in response to the parsed Gemma tool parameters.
+- **Connectivity Safeguards**: Optimized network checks to query Google DNS with dynamic fallback to Hugging Face CDN, avoiding timeout issues on slow cold-boot data connections.
+
+### Day 10 — May 23, 2026 (Walkie-Talkie UX, System Alerts & Size Cuts)
+- **Snappy Walkie-Talkie Hold-and-Release Physics**: Mixed in `SingleTickerProviderStateMixin` and added a breathing pulse animation. Holding the cyan mic scales it up snappily (Curves.easeOutBack) to 1.25x and pulses, while releasing triggers automatic message transmission.
+- **Self-Healing STT State Machine**: Introduced physical touch state verification (`_isPressed`). Releasing the microphone before the native STT hardware finishes its asynchronous startup sequence immediately cancels recording safely, preventing asynchronous locking bugs.
+- **Dynamic On-Demand Privacy Prompts**: Completely bypassed Camera/Storage permissions in onboarding. Integrated native permission checks and dynamic requests for the Microphone and Notification channels, popping the native dialogues only when the user triggers the voice button or a notification command.
+- **Offline Local System Notifications**: Implemented Kotlin-native notification dispatch and permission re-checking. Integrated `"sendNotification"` natively in Gemma's JSON tool definitions.
+- **Static Analysis Compliance**: Resolved all analyzer warnings and lints (`flutter analyze` is 100% warning-clean and compile-safe).
+- **90.8MB APK Size Strip**: Exploded the 284.3MB fat release APK to inspect internal files. Identified a Gradle DSL gotcha: `abiFilters += "arm64-v8a"` only appends to the compiler defaults, compiling unused architectures (`armeabi-v7a` and `x86_64`) into the final binary. Replaced with `abiFilters.clear()` and `abiFilters.add("arm64-v8a")`, and added a `packaging { jniLibs { excludes.addAll(...) } }` block to completely strip non-arm64 native `.so` engines, bringing the final package size down to **193.5MB**.
