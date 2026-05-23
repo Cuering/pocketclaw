@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../core/pocketclaw_theme.dart';
+import '../core/status_words.dart';
 import '../models/user_prefs.dart';
 import '../services/gemma_service.dart';
 import '../services/prefs_service.dart';
@@ -9,13 +11,8 @@ import '../services/prefs_service.dart';
 ///   2. Download prompt (1.5 GB explainer, single tap to start)
 ///   3. Download/loading progress (in-flight)
 ///
-/// Background work happens in parallel with the UI:
-///   - As soon as the user finishes step 1, [ensureInstalled] starts.
-///   - As soon as it finishes (or model is already on disk), [ensureLoaded]
-///     starts. Progress is reflected via GemmaService.state +
-///     GemmaService.downloadProgress.
-///   - When state == ready, we mark prefs.onboardingCompleted and pop
-///     to the chat screen.
+/// Setup starts only after the user taps "Download Claw". Onboarding does not
+/// complete until both the chat model and the embedding model are ready.
 class OnboardingScreen extends StatefulWidget {
   const OnboardingScreen({super.key, required this.onDone});
 
@@ -31,17 +28,20 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   final _nameController = TextEditingController();
   int _currentStep = 0;
   bool _bootstrapStarted = false;
+  String _setupStatus = StatusWords.random();
 
   @override
   void initState() {
     super.initState();
     // Listen for model ready so we can auto-advance to "done" state.
     GemmaService.instance.state.addListener(_onGemmaStateChange);
+    GemmaService.instance.embedderState.addListener(_onGemmaStateChange);
   }
 
   @override
   void dispose() {
     GemmaService.instance.state.removeListener(_onGemmaStateChange);
+    GemmaService.instance.embedderState.removeListener(_onGemmaStateChange);
     _pageController.dispose();
     _nameController.dispose();
     super.dispose();
@@ -50,7 +50,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   void _onGemmaStateChange() {
     if (!mounted) return;
     final state = GemmaService.instance.state.value;
-    if (state == GemmaState.ready && _currentStep == 2) {
+    final embedderState = GemmaService.instance.embedderState.value;
+    if (state == GemmaState.ready &&
+        embedderState == EmbedderState.installed &&
+        _currentStep == 2) {
       _completeOnboarding();
     } else {
       // Force rebuild for progress UI
@@ -83,6 +86,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   Future<void> _startBootstrap() async {
     if (_bootstrapStarted) return;
     _bootstrapStarted = true;
+    setState(() => _setupStatus = StatusWords.random());
 
     // We sequence the downloads but parallelize what makes sense:
     //   1. ensureInstalled() — downloads Gemma 4 E2B (1.5 GB)
@@ -95,6 +99,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     // model load wait that the user would see anyway. Free 7s saving.
 
     try {
+      if (GemmaService.instance.state.value == GemmaState.error) {
+        await GemmaService.instance.init();
+      }
       // Step 1: download + register inference model.
       await GemmaService.instance.ensureInstalled();
 
@@ -125,10 +132,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             _WelcomeStep(
               nameController: _nameController,
               onNext: () {
-                // Pre-warm: trigger bootstrap as soon as the user has named
-                // themselves. Even if they sit on step 2 for a while, the
-                // download starts. We re-call on step 3 but that's a no-op.
-                _startBootstrap();
                 _goToStep(1);
               },
             ),
@@ -139,9 +142,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               },
             ),
             _ProgressStep(
-              name: _nameController.text.trim(),
+              status: _setupStatus,
               onRetry: () {
                 _bootstrapStarted = false;
+                _setupStatus = StatusWords.random();
                 _startBootstrap();
                 setState(() {});
               },
@@ -170,7 +174,24 @@ class _WelcomeStep extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Spacer(),
-          const Text('🐾', style: TextStyle(fontSize: 64)),
+          DecoratedBox(
+            decoration: PocketClawTheme.panel(
+              color: PocketClawTheme.bg2,
+              border: PocketClawTheme.cyan,
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(6),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(6),
+                child: Image.asset(
+                  'assets/images/pocketclaw_icon.png',
+                  width: 88,
+                  height: 88,
+                  fit: BoxFit.cover,
+                ),
+              ),
+            ),
+          ),
           const SizedBox(height: 16),
           Text(
             'Meet Claw',
@@ -196,12 +217,7 @@ class _WelcomeStep extends StatelessWidget {
           TextField(
             controller: nameController,
             autofocus: true,
-            decoration: InputDecoration(
-              hintText: 'Your name (optional)',
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
+            decoration: const InputDecoration(hintText: 'Your name (optional)'),
             onSubmitted: (_) => onNext(),
           ),
           const Spacer(),
@@ -238,10 +254,19 @@ class _DownloadExplainerStep extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Spacer(),
-          Icon(
-            Icons.cloud_download_outlined,
-            size: 64,
-            color: theme.colorScheme.primary,
+          DecoratedBox(
+            decoration: PocketClawTheme.panel(
+              color: PocketClawTheme.bg3,
+              border: PocketClawTheme.mint,
+            ),
+            child: const Padding(
+              padding: EdgeInsets.all(14),
+              child: Icon(
+                Icons.cloud_download_outlined,
+                size: 44,
+                color: PocketClawTheme.cyan,
+              ),
+            ),
           ),
           const SizedBox(height: 16),
           Text(
@@ -254,21 +279,24 @@ class _DownloadExplainerStep extends StatelessWidget {
           _Bullet(
             icon: Icons.download_outlined,
             title: 'One-time download',
-            body: 'Claw is about 1.5 GB. It downloads once, then runs '
+            body:
+                'Claw is about 1.5 GB. It downloads once, then runs '
                 'entirely offline.',
           ),
           const SizedBox(height: 12),
           _Bullet(
             icon: Icons.wifi_outlined,
             title: 'Use Wi-Fi if you can',
-            body: 'Cellular works but uses your data. We pause if the '
+            body:
+                'Cellular works but uses your data. We pause if the '
                 'connection drops.',
           ),
           const SizedBox(height: 12),
           _Bullet(
             icon: Icons.lock_outline,
             title: 'Private by design',
-            body: 'Your conversations stay on this device. Nothing is '
+            body:
+                'Your conversations stay on this device. Nothing is '
                 'sent to a server.',
           ),
           const Spacer(),
@@ -290,11 +318,7 @@ class _DownloadExplainerStep extends StatelessWidget {
 }
 
 class _Bullet extends StatelessWidget {
-  const _Bullet({
-    required this.icon,
-    required this.title,
-    required this.body,
-  });
+  const _Bullet({required this.icon, required this.title, required this.body});
 
   final IconData icon;
   final String title;
@@ -306,7 +330,18 @@ class _Bullet extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Icon(icon, size: 22, color: theme.colorScheme.primary),
+        DecoratedBox(
+          decoration: PocketClawTheme.panel(
+            color: PocketClawTheme.bg3,
+            border: PocketClawTheme.cyan,
+            radius: 6,
+            shadow: false,
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(6),
+            child: Icon(icon, size: 18, color: PocketClawTheme.cyan),
+          ),
+        ),
         const SizedBox(width: 12),
         Expanded(
           child: Column(
@@ -331,9 +366,9 @@ class _Bullet extends StatelessWidget {
 // ── Step 3: Progress ────────────────────────────────────────────────────
 
 class _ProgressStep extends StatelessWidget {
-  const _ProgressStep({required this.name, required this.onRetry});
+  const _ProgressStep({required this.status, required this.onRetry});
 
-  final String name;
+  final String status;
   final VoidCallback onRetry;
 
   @override
@@ -344,88 +379,115 @@ class _ProgressStep extends StatelessWidget {
       child: ValueListenableBuilder<GemmaState>(
         valueListenable: GemmaService.instance.state,
         builder: (context, state, _) {
-          final isError = state == GemmaState.error;
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Spacer(),
-              Icon(
-                isError ? Icons.error_outline : Icons.psychology_outlined,
-                size: 64,
-                color: isError
-                    ? theme.colorScheme.error
-                    : theme.colorScheme.primary,
-              ),
-              const SizedBox(height: 16),
-              Text(
-                isError ? 'Something went wrong' : _titleFor(state, name),
-                style: theme.textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(height: 12),
-              Text(
-                isError
-                    ? "Couldn't finish setting up. Check your connection and try again."
-                    : _subtitleFor(state),
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-              const SizedBox(height: 24),
-              if (state == GemmaState.installing)
-                ValueListenableBuilder<int>(
-                  valueListenable: GemmaService.instance.downloadProgress,
-                  builder: (context, progress, _) => Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      LinearProgressIndicator(
-                        value: progress > 0 ? progress / 100 : null,
+          return ValueListenableBuilder<EmbedderState>(
+            valueListenable: GemmaService.instance.embedderState,
+            builder: (context, embedderState, _) {
+              final isError =
+                  state == GemmaState.error ||
+                  embedderState == EmbedderState.error;
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Spacer(),
+                  if (isError)
+                    Icon(
+                      Icons.error_outline,
+                      size: 64,
+                      color: theme.colorScheme.error,
+                    )
+                  else
+                    DecoratedBox(
+                      decoration: PocketClawTheme.panel(
+                        color: PocketClawTheme.bg2,
+                        border: PocketClawTheme.cyan,
                       ),
-                      const SizedBox(height: 4),
-                      Text(
-                        progress > 0 ? '$progress%' : 'Connecting…',
-                        style: theme.textTheme.bodySmall,
+                      child: Padding(
+                        padding: const EdgeInsets.all(6),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(6),
+                          child: Image.asset(
+                            'assets/images/pocketclaw_icon.png',
+                            width: 72,
+                            height: 72,
+                            fit: BoxFit.cover,
+                          ),
+                        ),
                       ),
-                    ],
-                  ),
-                )
-              else if (!isError)
-                const LinearProgressIndicator(),
-              const Spacer(),
-              if (isError)
-                SizedBox(
-                  width: double.infinity,
-                  child: FilledButton(
-                    onPressed: onRetry,
-                    style: FilledButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 14),
                     ),
-                    child: const Text('Retry'),
+                  const SizedBox(height: 16),
+                  Text(
+                    isError ? 'Something went wrong' : '$status...',
+                    style: theme.textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
-                ),
-              const SizedBox(height: 16),
-            ],
+                  const SizedBox(height: 12),
+                  Text(
+                    isError
+                        ? "Couldn't finish setting up. Check your connection and try again."
+                        : _subtitleFor(state),
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  if (state == GemmaState.installing)
+                    ValueListenableBuilder<int>(
+                      valueListenable: GemmaService.instance.downloadProgress,
+                      builder: (context, progress, _) => Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          LinearProgressIndicator(
+                            value: progress > 0 ? progress / 100 : null,
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            progress > 0 ? '$progress%' : 'Connecting...',
+                            style: theme.textTheme.bodySmall,
+                          ),
+                        ],
+                      ),
+                    )
+                  else if (embedderState == EmbedderState.installing)
+                    ValueListenableBuilder<int>(
+                      valueListenable:
+                          GemmaService.instance.embedderDownloadProgress,
+                      builder: (context, progress, _) => Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          LinearProgressIndicator(
+                            value: progress > 0 ? progress / 100 : null,
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            progress > 0 ? '$progress%' : 'Connecting...',
+                            style: theme.textTheme.bodySmall,
+                          ),
+                        ],
+                      ),
+                    )
+                  else if (!isError)
+                    const LinearProgressIndicator(),
+                  const Spacer(),
+                  if (isError)
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton(
+                        onPressed: onRetry,
+                        style: FilledButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                        ),
+                        child: const Text('Retry'),
+                      ),
+                    ),
+                  const SizedBox(height: 16),
+                ],
+              );
+            },
           );
         },
       ),
     );
-  }
-
-  String _titleFor(GemmaState state, String name) {
-    final greeting = name.isEmpty ? 'Almost ready' : 'Almost ready, $name';
-    switch (state) {
-      case GemmaState.installing:
-        return 'Downloading Claw';
-      case GemmaState.loading:
-      case GemmaState.installed:
-        return 'Loading Claw';
-      case GemmaState.ready:
-      case GemmaState.generating:
-        return greeting;
-      default:
-        return greeting;
-    }
   }
 
   String _subtitleFor(GemmaState state) {

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:flutter/services.dart';
 
+import '../core/pocketclaw_theme.dart';
 import '../models/message.dart';
 
 /// Sentinel that ChatScreen writes into a message's text field when a
@@ -15,129 +17,395 @@ class MessageBubble extends StatelessWidget {
     required this.message,
     this.onRetry,
     this.onDocTap,
+    this.loadingText,
   });
 
   final Message message;
   final VoidCallback? onRetry;
+
   /// Called when the doc-attachment card is tapped (to open preview).
   /// Null = card is non-interactive (e.g. inside the sender's bubble
   /// while doc is still indexing).
   final VoidCallback? onDocTap;
+  final String? loadingText;
+
+  static const _shareChannel = MethodChannel('pocketclaw/share');
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final isUser = message.isUser;
     final isError = message.text == kErrorSentinel;
 
     final bubbleColor = isUser
-        ? theme.colorScheme.primary
+        ? PocketClawTheme.purple
         : isError
-            ? theme.colorScheme.errorContainer
-            : theme.colorScheme.surfaceContainerHighest;
+        ? const Color(0xFF3A1720)
+        : PocketClawTheme.bg2;
     final textColor = isUser
-        ? theme.colorScheme.onPrimary
+        ? PocketClawTheme.text
         : isError
-            ? theme.colorScheme.onErrorContainer
-            : theme.colorScheme.onSurface;
+        ? PocketClawTheme.text
+        : PocketClawTheme.text;
 
     return Align(
       alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
-      child: Container(
-        constraints: BoxConstraints(
-          maxWidth: MediaQuery.of(context).size.width * 0.78,
-        ),
-        margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        decoration: BoxDecoration(
-          color: bubbleColor,
-          borderRadius: BorderRadius.only(
-            topLeft: const Radius.circular(16),
-            topRight: const Radius.circular(16),
-            bottomLeft: Radius.circular(isUser ? 16 : 4),
-            bottomRight: Radius.circular(isUser ? 4 : 16),
+      child: Column(
+        crossAxisAlignment: isUser
+            ? CrossAxisAlignment.end
+            : CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            constraints: BoxConstraints(
+              maxWidth: MediaQuery.of(context).size.width * 0.78,
+            ),
+            margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: PocketClawTheme.panel(
+              color: bubbleColor,
+              border: isUser
+                  ? PocketClawTheme.cyan
+                  : isError
+                  ? PocketClawTheme.error
+                  : PocketClawTheme.text,
+              radius: 8,
+              shadow: true,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (message.hasImage) ...[
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Image.memory(
+                      message.imageBytes!,
+                      fit: BoxFit.cover,
+                      height: 180,
+                    ),
+                  ),
+                  if (message.text.isNotEmpty && !isError)
+                    const SizedBox(height: 8),
+                ],
+                if (message.hasDoc) ...[
+                  _DocAttachmentCard(
+                    docName: message.attachedDocName!,
+                    chunkCount: message.attachedDocChunkCount ?? 0,
+                    onTap: onDocTap,
+                    onPrimary: isUser,
+                  ),
+                  if (message.text.isNotEmpty && !isError)
+                    const SizedBox(height: 8),
+                ],
+                if (isError) ...[
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.error_outline, size: 18, color: textColor),
+                      const SizedBox(width: 6),
+                      Text(
+                        "Claw couldn't finish that.",
+                        style: TextStyle(color: textColor, fontSize: 14),
+                      ),
+                    ],
+                  ),
+                  if (onRetry != null) ...[
+                    const SizedBox(height: 6),
+                    TextButton.icon(
+                      onPressed: onRetry,
+                      icon: Icon(Icons.refresh, size: 16, color: textColor),
+                      label: Text('Retry', style: TextStyle(color: textColor)),
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        minimumSize: Size.zero,
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                    ),
+                  ],
+                ] else if (message.text.isNotEmpty)
+                  isUser
+                      ? Text(
+                          message.text,
+                          style: TextStyle(color: textColor, fontSize: 15),
+                        )
+                      : _AssistantMessageContent(
+                          text: message.text,
+                          textColor: textColor,
+                        ),
+                if (!isUser &&
+                    !isError &&
+                    message.text.isEmpty &&
+                    loadingText != null)
+                  _LoadingStatus(text: loadingText!, color: textColor),
+              ],
+            ),
+          ),
+          _MessageActions(
+            isUser: isUser,
+            copyText: _copyableText(message),
+            onRetry: onRetry,
+            onCopy: (value) => _copy(context, value),
+            onShare: (value) => _share(context, value),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _copyableText(Message message) {
+    final parts = <String>[];
+    if (message.hasDoc) {
+      parts.add('[Attached document: ${message.attachedDocName}]');
+    }
+    if (message.hasImage) {
+      parts.add('[Attached image: ${message.imageName ?? 'uploaded image'}]');
+    } else if (message.hasImageSummary) {
+      parts.add(
+        '[Image summary: ${message.imageName ?? 'uploaded image'}]\n'
+        '${message.imageSummary!.trim()}',
+      );
+    }
+    if (message.text.trim().isNotEmpty && message.text != kErrorSentinel) {
+      parts.add(message.text.trim());
+    }
+    return parts.join('\n\n');
+  }
+
+  Future<void> _copy(BuildContext context, String value) async {
+    if (value.trim().isEmpty) return;
+    await Clipboard.setData(ClipboardData(text: value));
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Copied'), duration: Duration(seconds: 1)),
+    );
+  }
+
+  Future<void> _share(BuildContext context, String value) async {
+    if (value.trim().isEmpty) return;
+    try {
+      await _shareChannel.invokeMethod<bool>('shareText', {'text': value});
+    } on PlatformException catch (_) {
+      if (!context.mounted) return;
+      await _copy(context, value);
+    }
+  }
+}
+
+class _LoadingStatus extends StatelessWidget {
+  const _LoadingStatus({required this.text, required this.color});
+
+  final String text;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        SizedBox(
+          width: 14,
+          height: 14,
+          child: CircularProgressIndicator(
+            strokeWidth: 2,
+            color: color.withValues(alpha: 0.72),
           ),
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (message.hasImage) ...[
-              ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: Image.memory(
-                  message.imageBytes!,
-                  fit: BoxFit.cover,
-                  height: 180,
-                ),
-              ),
-              if (message.text.isNotEmpty && !isError)
-                const SizedBox(height: 8),
-            ],
-            if (message.hasDoc) ...[
-              _DocAttachmentCard(
-                docName: message.attachedDocName!,
-                chunkCount: message.attachedDocChunkCount ?? 0,
-                onTap: onDocTap,
-                onPrimary: isUser,
-              ),
-              if (message.text.isNotEmpty && !isError)
-                const SizedBox(height: 8),
-            ],
-            if (isError) ...[
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.error_outline, size: 18, color: textColor),
-                  const SizedBox(width: 6),
-                  Text(
-                    "Claw couldn't finish that.",
-                    style: TextStyle(color: textColor, fontSize: 14),
+        const SizedBox(width: 8),
+        Text('$text...', style: TextStyle(color: color, fontSize: 14)),
+      ],
+    );
+  }
+}
+
+class _MessageActions extends StatelessWidget {
+  const _MessageActions({
+    required this.isUser,
+    required this.copyText,
+    required this.onCopy,
+    required this.onShare,
+    this.onRetry,
+  });
+
+  final bool isUser;
+  final String copyText;
+  final VoidCallback? onRetry;
+  final void Function(String) onCopy;
+  final void Function(String) onShare;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final color = theme.colorScheme.onSurfaceVariant;
+    return Padding(
+      padding: EdgeInsets.only(
+        left: isUser ? 0 : 16,
+        right: isUser ? 16 : 0,
+        bottom: 4,
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _ActionButton(
+            icon: Icons.copy_outlined,
+            label: 'Copy',
+            color: color,
+            onPressed: copyText.trim().isEmpty ? null : () => onCopy(copyText),
+          ),
+          _ActionButton(
+            icon: Icons.ios_share_outlined,
+            label: 'Share',
+            color: color,
+            onPressed: copyText.trim().isEmpty ? null : () => onShare(copyText),
+          ),
+          if (onRetry != null)
+            _ActionButton(
+              icon: Icons.refresh,
+              label: 'Try again',
+              color: color,
+              onPressed: onRetry,
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ActionButton extends StatelessWidget {
+  const _ActionButton({
+    required this.icon,
+    required this.label,
+    required this.color,
+    required this.onPressed,
+  });
+
+  final IconData icon;
+  final String label;
+  final Color color;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      icon: Icon(icon, size: 18),
+      color: color,
+      tooltip: label,
+      onPressed: onPressed,
+      constraints: const BoxConstraints.tightFor(width: 36, height: 32),
+      padding: EdgeInsets.zero,
+      visualDensity: VisualDensity.compact,
+    );
+  }
+}
+
+class _AssistantMessageContent extends StatelessWidget {
+  const _AssistantMessageContent({required this.text, required this.textColor});
+
+  final String text;
+  final Color textColor;
+
+  @override
+  Widget build(BuildContext context) {
+    final segments = _splitMarkdownCodeBlocks(text);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (final segment in segments) ...[
+          if (segment.isCode)
+            _CopyableCodeBlock(code: segment.text)
+          else if (segment.text.trim().isNotEmpty)
+            MarkdownBody(
+              data: segment.text,
+              styleSheet: MarkdownStyleSheet.fromTheme(Theme.of(context))
+                  .copyWith(
+                    p: Theme.of(
+                      context,
+                    ).textTheme.bodyMedium?.copyWith(color: textColor),
                   ),
-                ],
+              selectable: true,
+            ),
+          if (segment != segments.last) const SizedBox(height: 8),
+        ],
+      ],
+    );
+  }
+
+  List<_ContentSegment> _splitMarkdownCodeBlocks(String value) {
+    final pattern = RegExp(r'```[^\n]*\n([\s\S]*?)```');
+    final segments = <_ContentSegment>[];
+    var cursor = 0;
+    for (final match in pattern.allMatches(value)) {
+      if (match.start > cursor) {
+        segments.add(_ContentSegment(value.substring(cursor, match.start)));
+      }
+      segments.add(_ContentSegment(match.group(1) ?? '', isCode: true));
+      cursor = match.end;
+    }
+    if (cursor < value.length) {
+      segments.add(_ContentSegment(value.substring(cursor)));
+    }
+    return segments.isEmpty ? [_ContentSegment(value)] : segments;
+  }
+}
+
+class _ContentSegment {
+  _ContentSegment(this.text, {this.isCode = false});
+
+  final String text;
+  final bool isCode;
+}
+
+class _CopyableCodeBlock extends StatelessWidget {
+  const _CopyableCodeBlock({required this.code});
+
+  final String code;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      decoration: PocketClawTheme.panel(
+        color: PocketClawTheme.bg,
+        border: PocketClawTheme.mint,
+        radius: 8,
+      ),
+      child: Stack(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 12, 42, 12),
+            child: SelectableText(
+              code.trimRight(),
+              style: TextStyle(
+                fontFamily: 'monospace',
+                fontSize: 13,
+                color: PocketClawTheme.text,
               ),
-              if (onRetry != null) ...[
-                const SizedBox(height: 6),
-                TextButton.icon(
-                  onPressed: onRetry,
-                  icon: Icon(Icons.refresh, size: 16, color: textColor),
-                  label: Text('Retry', style: TextStyle(color: textColor)),
-                  style: TextButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 4,
-                    ),
-                    minimumSize: Size.zero,
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+          ),
+          Positioned(
+            top: 6,
+            right: 6,
+            child: IconButton(
+              icon: const Icon(Icons.copy_outlined, size: 18),
+              tooltip: 'Copy code',
+              onPressed: () async {
+                await Clipboard.setData(ClipboardData(text: code.trimRight()));
+                if (!context.mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Code copied'),
+                    duration: Duration(seconds: 1),
                   ),
-                ),
-              ],
-            ] else if (message.text.isNotEmpty)
-              isUser
-                  ? Text(
-                      message.text,
-                      style: TextStyle(color: textColor, fontSize: 15),
-                    )
-                  : MarkdownBody(
-                      data: message.text,
-                      styleSheet: MarkdownStyleSheet.fromTheme(theme).copyWith(
-                        p: theme.textTheme.bodyMedium?.copyWith(
-                          color: textColor,
-                        ),
-                        code: TextStyle(
-                          backgroundColor: theme.colorScheme.surface,
-                          fontFamily: 'monospace',
-                          fontSize: 13,
-                        ),
-                        codeblockDecoration: BoxDecoration(
-                          color: theme.colorScheme.surface,
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                      ),
-                      selectable: true,
-                    ),
-          ],
-        ),
+                );
+              },
+              constraints: const BoxConstraints.tightFor(width: 32, height: 32),
+              padding: EdgeInsets.zero,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -161,19 +429,14 @@ class _DocAttachmentCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final bg = onPrimary
-        ? theme.colorScheme.onPrimary.withValues(alpha: 0.12)
-        : theme.colorScheme.primaryContainer;
-    final fg = onPrimary
-        ? theme.colorScheme.onPrimary
-        : theme.colorScheme.onPrimaryContainer;
+    final bg = onPrimary ? PocketClawTheme.bg3 : PocketClawTheme.bg;
+    final fg = PocketClawTheme.text;
     return Material(
       color: bg,
-      borderRadius: BorderRadius.circular(10),
+      borderRadius: BorderRadius.circular(8),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(8),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
           child: Row(
@@ -220,4 +483,3 @@ class _DocAttachmentCard extends StatelessWidget {
     );
   }
 }
-

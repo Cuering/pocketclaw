@@ -12,6 +12,8 @@ class Conversation {
     String? id,
     this.title = 'New chat',
     List<Message>? messages,
+    this.contextSummary,
+    this.contextSummaryMessageCount = 0,
     DateTime? createdAt,
     DateTime? updatedAt,
   }) : id = id ?? const Uuid().v4(),
@@ -22,6 +24,8 @@ class Conversation {
   final String id;
   String title;
   final List<Message> messages;
+  String? contextSummary;
+  int contextSummaryMessageCount;
   final DateTime createdAt;
   DateTime updatedAt;
 
@@ -46,6 +50,8 @@ class Conversation {
     'id': id,
     'title': title,
     'messages': messages.map((m) => m.toJson()).toList(),
+    'contextSummary': contextSummary,
+    'contextSummaryMessageCount': contextSummaryMessageCount,
     'createdAt': createdAt.toIso8601String(),
     'updatedAt': updatedAt.toIso8601String(),
   };
@@ -56,6 +62,8 @@ class Conversation {
     messages: (json['messages'] as List? ?? [])
         .map((m) => Message.fromJson(Map<String, dynamic>.from(m as Map)))
         .toList(),
+    contextSummary: json['contextSummary'] as String?,
+    contextSummaryMessageCount: json['contextSummaryMessageCount'] as int? ?? 0,
     createdAt: DateTime.tryParse(json['createdAt'] as String? ?? ''),
     updatedAt: DateTime.tryParse(json['updatedAt'] as String? ?? ''),
   );

@@ -45,3 +45,4 @@ app.*.map.json
 /android/app/release
 pocketclaw-scratch.md
 debugging-playbook.md
+ui_design.md

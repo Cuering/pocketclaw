@@ -2,10 +2,11 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:syncfusion_flutter_pdf/pdf.dart';
 
-import 'package:image_picker/image_picker.dart';
-
+import '../core/pocketclaw_theme.dart';
+import '../core/status_words.dart';
 import '../models/conversation.dart';
 import '../models/document.dart';
 import '../services/document_store.dart';
@@ -23,11 +24,7 @@ import 'conversation_list_screen.dart';
 /// If `conversation` is null, starts a fresh empty conversation that will
 /// be persisted as soon as the first message is sent.
 class ChatScreen extends StatefulWidget {
-  const ChatScreen({
-    super.key,
-    this.conversation,
-    this.onOpenDiagnostics,
-  });
+  const ChatScreen({super.key, this.conversation, this.onOpenDiagnostics});
 
   /// The conversation to display. Null = start a new chat.
   final Conversation? conversation;
@@ -46,21 +43,29 @@ class _ChatScreenState extends State<ChatScreen> {
   // Optional attached image for the next outgoing message.
   Uint8List? _pendingImage;
   String? _pendingImageName;
+  String? _pendingImageSummary;
+  bool _preparingImageSummary = false;
+  Document? _pendingDocument;
+  String? _pendingDocumentText;
 
-  // Documents indexed for the current conversation. Loaded once on init
-  // and after every successful index. Drives the chip strip above the
-  // input bar and the RAG retrieval in _handleSend.
+  // Documents indexed for the current conversation. Used for preview/history
+  // lookup and document-intent RAG retrieval; not shown as persistent chips.
   List<Document> _documents = const [];
 
   // True while a document is being chunked + embedded. Disables the
-  // attach button to prevent double-indexing and shows a snackbar.
+  // attach button to prevent double-indexing and shows inline status.
   bool _indexing = false;
+  String? _indexingDocumentName;
+  String _indexingStatus = StatusWords.random();
+  String _thinkingStatus = StatusWords.random();
 
   // Remembered failed send (for the Retry button on a failed assistant
   // bubble). Cleared on success or on a fresh send. We also keep the
   // bytes so retry recreates the exact same multimodal request.
   String? _lastFailedText;
   Uint8List? _lastFailedImage;
+  String? _lastFailedImageName;
+  String? _lastFailedImageSummary;
 
   // Whether Gemma is currently generating; disables input when true.
   bool _busy = false;
@@ -68,12 +73,11 @@ class _ChatScreenState extends State<ChatScreen> {
   // For auto-scrolling the message list to the bottom on new content.
   final _scrollController = ScrollController();
 
-  // Compaction threshold. Gemma 4 E2B has 128K context; we leave 28K
-  // headroom for the system prompt + new message + response.
-  static const int _compactionThresholdTokens = 100000;
-
-  // Note prepended to the prompt when older messages are dropped.
-  String? _compactionNote;
+  static const int _recentContextMessageCount = 24;
+  static const List<String> _allowedDocumentExtensions = ['md', 'pdf', 'txt'];
+  static const int _maxImageBytes = 10 * 1024 * 1024;
+  static const int _maxDocumentBytes = 15 * 1024 * 1024;
+  static const int _maxExtractedDocumentChars = 120000;
 
   @override
   void initState() {
@@ -90,9 +94,11 @@ class _ChatScreenState extends State<ChatScreen> {
         widget.conversation!.id != _conversation.id) {
       setState(() {
         _conversation = widget.conversation!;
-        _compactionNote = null;
         _pendingImage = null;
         _pendingImageName = null;
+        _pendingImageSummary = null;
+        _pendingDocument = null;
+        _pendingDocumentText = null;
         _documents = const [];
       });
       _loadDocuments();
@@ -126,10 +132,13 @@ class _ChatScreenState extends State<ChatScreen> {
       if (picked == null) return;
       final bytes = await picked.readAsBytes();
       if (!mounted) return;
-      setState(() {
-        _pendingImage = bytes;
-        _pendingImageName = picked.name;
-      });
+      if (bytes.length > _maxImageBytes) {
+        _showFileTooLarge(
+          'Images can be up to ${_formatBytes(_maxImageBytes)}.',
+        );
+        return;
+      }
+      await _attachImageFile(name: picked.name, bytes: bytes);
     } catch (e, stack) {
       debugPrint('🐾 CHAT: image pick failed: $e\n$stack');
       if (mounted) {
@@ -143,104 +152,503 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  void _clearAttachment() {
+  Future<void> _pickAndIndexDocument() async {
+    if (_indexing) return;
+    try {
+      final picked = await FilePicker.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: _allowedDocumentExtensions,
+        withData: true,
+      );
+      if (picked == null) return;
+      final file = picked.files.single;
+      final bytes = file.bytes;
+      if (!mounted) return;
+      if (bytes == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Couldn't read that file."),
+            duration: Duration(seconds: 3),
+          ),
+        );
+        return;
+      }
+      final ext = file.extension?.toLowerCase() ?? '';
+      if (_isDocumentExtension(ext)) {
+        if (bytes.length > _maxDocumentBytes) {
+          _showFileTooLarge(
+            'Documents can be up to ${_formatBytes(_maxDocumentBytes)}.',
+          );
+          return;
+        }
+        await _indexDocumentFile(name: file.name, extension: ext, bytes: bytes);
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Supported documents: md, pdf, txt.'),
+          duration: Duration(seconds: 3),
+        ),
+      );
+    } catch (e, stack) {
+      debugPrint('🐾 CHAT: file pick failed: $e\n$stack');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Couldn't open the file picker."),
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
+    }
+  }
+
+  bool _isDocumentExtension(String ext) =>
+      ext == 'md' || ext == 'pdf' || ext == 'txt';
+
+  void _showFileTooLarge(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), duration: const Duration(seconds: 3)),
+    );
+  }
+
+  String _formatBytes(int bytes) {
+    final mb = bytes / (1024 * 1024);
+    return '${mb.toStringAsFixed(mb.truncateToDouble() == mb ? 0 : 1)} MB';
+  }
+
+  Future<void> _attachImageFile({
+    required String name,
+    required Uint8List bytes,
+  }) async {
+    await _deletePendingDocumentIfAny();
+    setState(() {
+      _pendingImage = bytes;
+      _pendingImageName = name;
+      _pendingImageSummary = null;
+      _pendingDocument = null;
+      _pendingDocumentText = null;
+    });
+    // ignore: discarded_futures
+    _preparePendingImageSummary(bytes, name);
+  }
+
+  Future<void> _clearAttachment() async {
+    final doc = _pendingDocument;
     setState(() {
       _pendingImage = null;
       _pendingImageName = null;
+      _pendingImageSummary = null;
+      _preparingImageSummary = false;
+      _pendingDocument = null;
+      _pendingDocumentText = null;
     });
+    if (doc != null) {
+      try {
+        await RagService.instance.deleteDocument(doc);
+        await _loadDocuments();
+      } catch (e, stack) {
+        debugPrint('🐾 CHAT: pending doc cleanup failed: $e\n$stack');
+      }
+    }
+  }
+
+  Future<void> _deletePendingDocumentIfAny() async {
+    final doc = _pendingDocument;
+    if (doc == null) return;
+    setState(() {
+      _pendingDocument = null;
+      _pendingDocumentText = null;
+    });
+    try {
+      await RagService.instance.deleteDocument(doc);
+      await _loadDocuments();
+    } catch (e, stack) {
+      debugPrint('🐾 CHAT: pending doc cleanup failed: $e\n$stack');
+    }
+  }
+
+  Future<void> _preparePendingImageSummary(
+    Uint8List imageBytes,
+    String imageName,
+  ) async {
+    if (GemmaService.instance.state.value != GemmaState.ready) return;
+    setState(() {
+      _preparingImageSummary = true;
+      _thinkingStatus = StatusWords.random();
+    });
+    try {
+      final summary = await GemmaService.instance.generate(
+        'Extract any visible text from this image, then summarize the image. '
+        'Return concise notes for future chat context.',
+        imageBytes: imageBytes,
+        userName: PrefsService.instance.current.name,
+      );
+      if (!mounted || _pendingImage != imageBytes) return;
+      setState(() {
+        _pendingImageSummary = summary.trim().isEmpty
+            ? 'Image attached: $imageName.'
+            : summary.trim();
+      });
+    } catch (e, stack) {
+      debugPrint('🐾 CHAT: image summary failed: $e\n$stack');
+      if (!mounted || _pendingImage != imageBytes) return;
+      setState(() => _pendingImageSummary = 'Image attached: $imageName.');
+      await _recoverModelAfterBackgroundFailure();
+    } finally {
+      if (mounted && _pendingImage == imageBytes) {
+        setState(() => _preparingImageSummary = false);
+      }
+    }
+  }
+
+  Future<void> _recoverModelAfterBackgroundFailure() async {
+    try {
+      if (GemmaService.instance.state.value == GemmaState.error) {
+        await GemmaService.instance.init();
+      }
+      if (GemmaService.instance.state.value == GemmaState.installed) {
+        await GemmaService.instance.ensureInstalled();
+        await GemmaService.instance.ensureLoaded();
+      }
+    } catch (e, stack) {
+      debugPrint('🐾 CHAT: model recovery failed: $e\n$stack');
+    }
   }
 
   /// Build the prompt sent to Gemma, including conversation history.
   String _buildPromptFromHistory(String newUserText) {
     final buffer = StringBuffer();
-    if (_compactionNote != null) {
-      buffer.writeln('[Earlier conversation: $_compactionNote]');
+    if (_hasPriorUploadMemory()) {
+      buffer.writeln(
+        '[Memory rule] Earlier image/document summaries below are available '
+        'chat memory. If the user asks about a prior upload, answer from that '
+        'memory and prior assistant replies instead of asking them to upload '
+        'again. Ask for reupload only when no relevant memory exists.',
+      );
       buffer.writeln();
     }
-    for (final msg in _conversation.messages) {
+    final summary = _conversation.contextSummary;
+    if (summary != null && summary.trim().isNotEmpty) {
+      buffer.writeln('[Earlier conversation summary]');
+      buffer.writeln(summary.trim());
+      buffer.writeln();
+    }
+    for (final msg in _recentMessagesForPrompt(excludeLastUser: true)) {
       if (msg.isUser) {
-        buffer.writeln('User: ${msg.text}');
+        buffer.writeln('User: ${_messageTextForPrompt(msg)}');
       } else if (msg.isAssistant) {
-        buffer.writeln('Assistant: ${msg.text}');
+        buffer.writeln('Assistant: ${_messageTextForPrompt(msg)}');
       }
     }
     buffer.write('User: $newUserText');
     return buffer.toString();
   }
 
-  /// Drop oldest non-system messages until estimated tokens < threshold.
-  void _compactIfNeeded() {
-    int estimate() {
-      int chars = (_compactionNote?.length ?? 0);
-      for (final m in _conversation.messages) {
-        chars += m.text.length + 20;
+  bool _hasPriorUploadMemory() =>
+      _conversation.messages.any((m) => m.hasDoc || m.hasImageSummary) ||
+      (_conversation.contextSummary?.contains(
+            'Files/images already discussed',
+          ) ??
+          false);
+
+  List<Message> _recentMessagesForPrompt({bool excludeLastUser = false}) {
+    final start = _conversation.messages.length - _recentContextMessageCount;
+    final recent = _conversation.messages
+        .skip(start < 0 ? 0 : start)
+        .where((m) => m.text.isNotEmpty || m.hasDoc || m.hasImageSummary)
+        .toList();
+    if (excludeLastUser && recent.isNotEmpty && recent.last.isUser) {
+      recent.removeLast();
+    }
+    return recent;
+  }
+
+  String _messageTextForPrompt(Message msg) {
+    final parts = <String>[];
+    if (msg.text.trim().isNotEmpty) parts.add(msg.text.trim());
+    if (msg.hasDoc) parts.add('[Attached document: ${msg.attachedDocName}]');
+    if (msg.hasImageSummary) {
+      final name = msg.imageName?.trim().isNotEmpty == true
+          ? msg.imageName!.trim()
+          : 'uploaded image';
+      parts.add('[Prior image: $name]\n${msg.imageSummary!.trim()}');
+    } else if (msg.hasImage) {
+      final name = msg.imageName?.trim().isNotEmpty == true
+          ? msg.imageName!.trim()
+          : 'uploaded image';
+      parts.add('[Attached image: $name]');
+    }
+    return parts.join('\n');
+  }
+
+  void _compactForContextIfNeeded() {
+    final compactThrough =
+        _conversation.messages.length - _recentContextMessageCount;
+    if (compactThrough <= _conversation.contextSummaryMessageCount) return;
+
+    final newlyOlder = _conversation.messages
+        .skip(_conversation.contextSummaryMessageCount)
+        .take(compactThrough - _conversation.contextSummaryMessageCount)
+        .toList();
+    if (newlyOlder.isEmpty) return;
+
+    final userFacts = <String>[];
+    final attachments = <String>[];
+    final openIntents = <String>[];
+    final condensedTurns = <String>[];
+
+    final existing = _conversation.contextSummary;
+    for (final msg in newlyOlder) {
+      final who = msg.isUser
+          ? 'User'
+          : msg.isAssistant
+          ? 'Claw'
+          : 'System';
+      final text = _messageTextForPrompt(msg);
+      if (text.trim().isEmpty) continue;
+
+      final compactText = _shorten(text, 420);
+      condensedTurns.add('- $who: $compactText');
+
+      if (msg.hasDoc) {
+        attachments.add('Document available: ${msg.attachedDocName}.');
       }
-      return chars ~/ 4;
+      if (msg.hasImageSummary) {
+        final name = msg.imageName?.trim().isNotEmpty == true
+            ? msg.imageName!.trim()
+            : 'uploaded image';
+        attachments.add(
+          'Image available: $name. ${_shorten(msg.imageSummary!.trim(), 240)}',
+        );
+      }
+      if (msg.isUser) {
+        final lower = msg.text.toLowerCase();
+        if (lower.contains('i am ') ||
+            lower.contains("i'm ") ||
+            lower.contains('my name') ||
+            lower.contains('i built') ||
+            lower.contains('i prefer') ||
+            lower.contains('remember')) {
+          userFacts.add(_shorten(msg.text.trim(), 240));
+        }
+        if (lower.contains('fix') ||
+            lower.contains('todo') ||
+            lower.contains('issue') ||
+            lower.contains('bug') ||
+            lower.contains('need to') ||
+            lower.contains('should')) {
+          openIntents.add(_shorten(msg.text.trim(), 240));
+        }
+      }
     }
 
-    if (estimate() <= _compactionThresholdTokens) return;
+    final buffer = StringBuffer();
+    buffer.writeln('Running conversation memory for Claw.');
+    final existingText = existing?.trim();
+    if (existingText != null && existingText.isNotEmpty) {
+      buffer.writeln();
+      buffer.writeln('Previous memory:');
+      buffer.writeln(existingText);
+    }
+    if (userFacts.isNotEmpty) {
+      buffer.writeln();
+      buffer.writeln('User facts/preferences:');
+      for (final fact in _dedupe(userFacts).take(8)) {
+        buffer.writeln('- $fact');
+      }
+    }
+    if (attachments.isNotEmpty) {
+      buffer.writeln();
+      buffer.writeln('Files/images already discussed:');
+      for (final attachment in _dedupe(attachments).take(10)) {
+        buffer.writeln('- $attachment');
+      }
+    }
+    if (openIntents.isNotEmpty) {
+      buffer.writeln();
+      buffer.writeln('Likely active goals or unresolved items:');
+      for (final intent in _dedupe(openIntents).take(8)) {
+        buffer.writeln('- $intent');
+      }
+    }
+    if (condensedTurns.isNotEmpty) {
+      buffer.writeln();
+      buffer.writeln('Condensed older turns:');
+      for (final turn in condensedTurns.take(16)) {
+        buffer.writeln(turn);
+      }
+    }
 
-    int droppedCount = 0;
-    while (estimate() > _compactionThresholdTokens &&
-        _conversation.messages.length > 4) {
-      _conversation.messages.removeAt(0);
-      droppedCount++;
+    _conversation.contextSummary = _shorten(buffer.toString().trim(), 5000);
+    _conversation.contextSummaryMessageCount = compactThrough;
+
+    for (var i = 0; i < compactThrough; i++) {
+      final msg = _conversation.messages[i];
+      if (msg.hasImage) {
+        _conversation.messages[i] = msg.copyWith(clearImage: true);
+      }
     }
-    if (droppedCount > 0) {
-      _compactionNote =
-          '${droppedCount + (_compactionNote != null ? 1 : 0)} earlier '
-          'messages compacted to save context space.';
-      debugPrint('🐾 CHAT: compacted, dropped $droppedCount messages');
+    debugPrint('🐾 CHAT: compacted context through $compactThrough messages');
+  }
+
+  String _shorten(String value, int maxChars) {
+    if (value.length <= maxChars) return value;
+    return '${value.substring(0, maxChars).trimRight()}...';
+  }
+
+  List<String> _dedupe(List<String> values) {
+    final seen = <String>{};
+    final result = <String>[];
+    for (final value in values) {
+      final normalized = value.toLowerCase().trim();
+      if (normalized.isEmpty || seen.contains(normalized)) continue;
+      seen.add(normalized);
+      result.add(value);
     }
+    return result;
+  }
+
+  String _imageMemoryFromAssistant({
+    required String? imageName,
+    required String assistantText,
+    String? existingSummary,
+  }) {
+    final label = imageName?.trim().isNotEmpty == true
+        ? imageName!.trim()
+        : 'uploaded image';
+    final existing = existingSummary?.trim();
+    final answer = assistantText.trim();
+    if (answer.isEmpty || answer == '__CLAW_ERROR__') {
+      return existing?.isNotEmpty == true
+          ? existing!
+          : 'Image attached: $label.';
+    }
+    final described =
+        'Assistant previously described $label as: '
+        '${_shorten(answer, 1000)}';
+    if (existing == null ||
+        existing.isEmpty ||
+        existing.startsWith('Image attached:')) {
+      return described;
+    }
+    if (existing.contains('Assistant previously described')) return existing;
+    return '${_shorten(existing, 700)}\n$described';
+  }
+
+  String _withContinuationHintIfNeeded(String text) {
+    final trimmed = text.trimRight();
+    if (trimmed.length < 5500) return text;
+    const completeEndings = ['.', '!', '?', ')', ']', '`'];
+    if (completeEndings.any(trimmed.endsWith)) return text;
+    return '$trimmed\n\nI may have hit the response limit. Send "continue" '
+        'and I will pick up from here.';
+  }
+
+  bool _looksLikeDocumentQuery(String text) {
+    final lower = text.toLowerCase();
+    return lower.contains('summari') ||
+        lower.contains('summary') ||
+        lower.contains('tldr') ||
+        lower.contains('tl;dr') ||
+        lower.contains('explain') ||
+        lower.contains('describe') ||
+        lower.contains('what is this') ||
+        lower.contains("what's this") ||
+        lower.contains('overview') ||
+        lower.contains('key point') ||
+        lower.contains('main idea') ||
+        lower.contains('document') ||
+        lower.contains('doc') ||
+        lower.contains('file') ||
+        lower.contains('pdf');
+  }
+
+  String _prependDocumentTextContext({
+    required String prompt,
+    required Document doc,
+    required String text,
+  }) {
+    final context = StringBuffer()
+      ..writeln('Use this attached document to answer the user.')
+      ..writeln('Document: ${doc.name}')
+      ..writeln('---')
+      ..writeln(_shorten(text.trim(), 18000))
+      ..writeln('---');
+    return '${context.toString()}\n$prompt';
+  }
+
+  String _prependRetrievedContext({
+    required String prompt,
+    required List<RetrievedChunk> hits,
+  }) {
+    final context = StringBuffer();
+    context.writeln('Use the following document excerpts to answer:');
+    for (final h in hits) {
+      context.writeln();
+      context.writeln('[From ${h.docName}]');
+      context.writeln(h.content);
+    }
+    context.writeln();
+    context.writeln('---');
+    return '${context.toString()}\n$prompt';
   }
 
   Future<void> _handleSend(String text) async {
-    if (_busy) return;
+    if (_busy || _preparingImageSummary) return;
 
     final imageBytes = _pendingImage;
+    final imageName = _pendingImageName;
+    final imageSummary =
+        _pendingImageSummary ??
+        (imageBytes != null
+            ? 'Image attached: ${imageName ?? 'uploaded image'}.'
+            : null);
+    final doc = _pendingDocument;
+    final docText = _pendingDocumentText;
     final userMsg = Message(
       role: MessageRole.user,
       text: text,
       imageBytes: imageBytes,
+      imageName: imageName,
+      imageSummary: imageSummary,
+      attachedDocId: doc?.id,
+      attachedDocName: doc?.name,
+      attachedDocChunkCount: doc?.chunkCount,
     );
     final assistantMsg = Message(role: MessageRole.assistant, text: '');
+    final userIndex = _conversation.messages.length;
 
     setState(() {
       _conversation.messages.add(userMsg);
       _conversation.messages.add(assistantMsg);
       _pendingImage = null;
       _pendingImageName = null;
+      _pendingImageSummary = null;
+      _pendingDocument = null;
+      _pendingDocumentText = null;
       _busy = true;
+      _thinkingStatus = StatusWords.random();
     });
     _scrollToBottom();
 
-    // Build prompt from history excluding the empty assistant placeholder
-    // we just added.
-    final history = _conversation.messages
-        .sublist(0, _conversation.messages.length - 1);
-    final historyForPrompt = history
-        .where((m) => m.text.isNotEmpty || m.hasImage)
-        .toList();
-    // Cheap reuse of the prompt builder: temporarily swap the messages list.
-    final backup = List<Message>.from(_conversation.messages);
-    _conversation.messages
-      ..clear()
-      ..addAll(historyForPrompt.where((m) => m != userMsg));
-    var prompt = _buildPromptFromHistory(text);
-    _conversation.messages
-      ..clear()
-      ..addAll(backup);
+    _compactForContextIfNeeded();
+    var prompt = _buildPromptFromHistory(_messageTextForPrompt(userMsg));
 
-    _compactIfNeeded();
-
-    // RAG: if any documents are indexed for this conversation, retrieve
-    // the top chunks for the user's query and prepend them as context.
-    // Soft-fails: if retrieval errors, we just send the prompt as-is so
-    // chat keeps working even if the embedder or vector store dies.
-    if (_documents.isNotEmpty) {
+    final retrievalQuery = text.trim().isEmpty && doc != null
+        ? 'summarize the document ${doc.name}'
+        : text;
+    if (doc != null && docText != null && docText.trim().isNotEmpty) {
+      prompt = _prependDocumentTextContext(
+        prompt: prompt,
+        doc: doc,
+        text: docText,
+      );
+    } else if (_documents.isNotEmpty &&
+        (doc != null || _looksLikeDocumentQuery(retrievalQuery))) {
       try {
         var hits = await RagService.instance.retrieve(
-          query: text,
+          query: retrievalQuery,
           conversationId: _conversation.id,
         );
 
@@ -250,45 +658,17 @@ class _ChatScreenState extends State<ChatScreen> {
         // query looks like one of these AND retrieval was empty (or only
         // brought back low-quality hits), fall back to filename-anchored
         // retrieval which grabs doc starts regardless of query terms.
-        final lower = text.toLowerCase();
-        // Generic queries also fire fallback when retrieval was sparse
-        // (1 or fewer hits) — a single tangential chunk + Gemma's training
-        // data hallucination is worse than admitting we have nothing.
-        final isGenericIntent = hits.length <= 1 &&
-            (lower.contains('summari') ||
-                lower.contains('summary') ||
-                lower.contains('tldr') ||
-                lower.contains('tl;dr') ||
-                lower.contains('explain') ||
-                lower.contains('describe') ||
-                lower.contains('what is this') ||
-                lower.contains("what's this") ||
-                lower.contains('what is the') ||
-                lower.contains('overview') ||
-                lower.contains('key point') ||
-                lower.contains('main idea') ||
-                lower.contains('the document') ||
-                lower.contains('the doc') ||
-                lower.contains('the file') ||
-                lower.contains('the pdf'));
-        if (isGenericIntent) {
-          debugPrint('🐾 CHAT: generic query, using filename-anchored fallback');
+        if (hits.length <= 1 && _looksLikeDocumentQuery(retrievalQuery)) {
+          debugPrint(
+            '🐾 CHAT: generic query, using filename-anchored fallback',
+          );
           hits = await RagService.instance.getDocStarts(
             conversationId: _conversation.id,
           );
         }
 
         if (hits.isNotEmpty) {
-          final context = StringBuffer();
-          context.writeln('Use the following document excerpts to answer:');
-          for (final h in hits) {
-            context.writeln();
-            context.writeln('[From ${h.docName}]');
-            context.writeln(h.content);
-          }
-          context.writeln();
-          context.writeln('---');
-          prompt = '${context.toString()}\n$prompt';
+          prompt = _prependRetrievedContext(prompt: prompt, hits: hits);
           debugPrint('🐾 CHAT: prepended ${hits.length} RAG chunks');
         }
       } catch (e, stack) {
@@ -307,14 +687,21 @@ class _ChatScreenState extends State<ChatScreen> {
           if (!mounted) return;
           setState(() {
             final lastIdx = _conversation.messages.length - 1;
-            _conversation.messages[lastIdx] =
-                _conversation.messages[lastIdx].copyWith(
-              text: responseBuffer.toString(),
-            );
+            _conversation.messages[lastIdx] = _conversation.messages[lastIdx]
+                .copyWith(text: responseBuffer.toString());
           });
           _scrollToBottom();
         },
       );
+      if (mounted) {
+        setState(() {
+          final lastIdx = _conversation.messages.length - 1;
+          final current = _conversation.messages[lastIdx];
+          _conversation.messages[lastIdx] = current.copyWith(
+            text: _withContinuationHintIfNeeded(current.text),
+          );
+        });
+      }
     } catch (e, stack) {
       debugPrint('🐾 CHAT: generate failed: $e\n$stack');
       if (mounted) {
@@ -322,13 +709,13 @@ class _ChatScreenState extends State<ChatScreen> {
           // Remember what failed so the Retry button can re-run it.
           _lastFailedText = text;
           _lastFailedImage = imageBytes;
+          _lastFailedImageName = imageName;
+          _lastFailedImageSummary = imageSummary;
           final lastIdx = _conversation.messages.length - 1;
           // Tag the assistant message with a sentinel that the bubble
           // renderer recognises and replaces with a Retry UI.
-          _conversation.messages[lastIdx] =
-              _conversation.messages[lastIdx].copyWith(
-            text: '__CLAW_ERROR__',
-          );
+          _conversation.messages[lastIdx] = _conversation.messages[lastIdx]
+              .copyWith(text: '__CLAW_ERROR__');
         });
       }
     } finally {
@@ -344,6 +731,19 @@ class _ChatScreenState extends State<ChatScreen> {
               _conversation.messages.last.text.isNotEmpty) {
             _lastFailedText = null;
             _lastFailedImage = null;
+            _lastFailedImageName = null;
+            _lastFailedImageSummary = null;
+          }
+          if (userIndex < _conversation.messages.length &&
+              _conversation.messages[userIndex].hasImage) {
+            final userImageMsg = _conversation.messages[userIndex];
+            _conversation.messages[userIndex] = userImageMsg.copyWith(
+              imageSummary: _imageMemoryFromAssistant(
+                imageName: userImageMsg.imageName,
+                assistantText: _conversation.messages.last.text,
+                existingSummary: userImageMsg.imageSummary,
+              ),
+            );
           }
         });
       }
@@ -375,8 +775,9 @@ class _ChatScreenState extends State<ChatScreen> {
   /// just walks the Hive box filtering by conversation_id.
   Future<void> _loadDocuments() async {
     try {
-      final docs = await DocumentStore.instance
-          .loadForConversation(_conversation.id);
+      final docs = await DocumentStore.instance.loadForConversation(
+        _conversation.id,
+      );
       if (!mounted) return;
       setState(() => _documents = docs);
     } catch (e, stack) {
@@ -385,13 +786,15 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  /// Open file picker, read selected .txt file, hand off to RagService
-  /// for chunking + embedding + storage. Snackbar progress, chip
-  /// strip refresh on success.
-  Future<void> _pickAndIndexDocument() async {
-    if (_indexing) return;
-    if (GemmaService.instance.embedderState.value !=
-        EmbedderState.installed) {
+  /// Read a selected text/PDF document, index it, and keep it as the pending
+  /// attachment for the next send. The original bytes are discarded after
+  /// extraction.
+  Future<void> _indexDocumentFile({
+    required String name,
+    required String extension,
+    required Uint8List bytes,
+  }) async {
+    if (GemmaService.instance.embedderState.value != EmbedderState.installed) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text("Claw is still getting ready. Just a moment…"),
@@ -401,44 +804,10 @@ class _ChatScreenState extends State<ChatScreen> {
       return;
     }
 
-    FilePickerResult? picked;
-    try {
-      picked = await FilePicker.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: const ['txt', 'md', 'pdf'],
-        withData: true,
-      );
-    } catch (e, stack) {
-      debugPrint('🐾 CHAT: file picker failed: $e\n$stack');
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Couldn't open the file picker."),
-          duration: Duration(seconds: 3),
-        ),
-      );
-      return;
-    }
-
-    if (picked == null || picked.files.isEmpty) return;
-    final file = picked.files.single;
-    final bytes = file.bytes;
-    if (!mounted) return;
-    if (bytes == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Couldn't read that file."),
-          duration: Duration(seconds: 3),
-        ),
-      );
-      return;
-    }
-
     // Extract text based on file type. PDF -> Syncfusion. txt/md -> UTF-8.
-    final ext = file.extension?.toLowerCase() ?? '';
     String text;
     try {
-      if (ext == 'pdf') {
+      if (extension == 'pdf') {
         final pdfDoc = PdfDocument(inputBytes: bytes);
         text = PdfTextExtractor(pdfDoc).extractText();
         pdfDoc.dispose();
@@ -466,61 +835,54 @@ class _ChatScreenState extends State<ChatScreen> {
       );
       return;
     }
+    if (text.length > _maxExtractedDocumentChars) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'That document is too large after extraction. Keep it under '
+            '${_maxExtractedDocumentChars ~/ 1000}k characters.',
+          ),
+          duration: const Duration(seconds: 4),
+        ),
+      );
+      return;
+    }
 
-    setState(() => _indexing = true);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Reading ${file.name}…'),
-        duration: const Duration(seconds: 30),
-      ),
-    );
+    setState(() {
+      _indexing = true;
+      _indexingDocumentName = name;
+      _indexingStatus = StatusWords.random();
+    });
 
     try {
+      await _deletePendingDocumentIfAny();
       // Persist the conversation FIRST if it has no messages yet, so
       // the document's conversationId points at something that will
       // exist when the user later reopens the chat.
-      if (_conversation.messages.isEmpty &&
-          _conversation.title == 'New chat') {
-        _conversation.title = file.name;
+      if (_conversation.messages.isEmpty && _conversation.title == 'New chat') {
+        _conversation.title = name;
         await ConversationStore.instance.save(_conversation);
       }
 
       final doc = await RagService.instance.indexDocument(
         text: text,
-        name: file.name,
+        name: name,
         conversationId: _conversation.id,
       );
 
       await _loadDocuments();
       if (!mounted) return;
 
-      // Append a user message bubble showing the attachment, persist it.
-      // This is what makes the doc visible in chat history (Option A).
-      final docMsg = Message(
-        role: MessageRole.user,
-        text: '',
-        attachedDocId: doc.id,
-        attachedDocName: doc.name,
-        attachedDocChunkCount: doc.chunkCount,
-      );
       setState(() {
-        _conversation.messages.add(docMsg);
+        _pendingImage = null;
+        _pendingImageName = null;
+        _pendingImageSummary = null;
+        _preparingImageSummary = false;
+        _pendingDocument = doc;
+        _pendingDocumentText = text;
       });
-      try {
-        await ConversationStore.instance.save(_conversation);
-      } catch (e) {
-        debugPrint('🐾 CHAT: failed to save doc msg: $e');
-      }
-      _scrollToBottom();
 
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).hideCurrentSnackBar();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Done! Ask Claw about ${file.name}.'),
-          duration: const Duration(seconds: 3),
-        ),
-      );
+      // The pending document chip in the composer is the completion signal.
     } catch (e, stack) {
       debugPrint('🐾 CHAT: indexDocument failed: $e\n$stack');
       if (mounted) {
@@ -533,26 +895,17 @@ class _ChatScreenState extends State<ChatScreen> {
         );
       }
     } finally {
-      if (mounted) setState(() => _indexing = false);
+      if (mounted) {
+        setState(() {
+          _indexing = false;
+          _indexingDocumentName = null;
+        });
+      }
     }
   }
 
-  /// Remove a document from the conversation's context. Soft-delete:
-  /// chunks remain orphans in the vector store but become invisible
-  /// because we filter by conversation_id at retrieve time.
-  Future<void> _removeDocument(Document doc) async {
-    try {
-      await RagService.instance.deleteDocument(doc);
-      await _loadDocuments();
-    } catch (e, stack) {
-      debugPrint('🐾 CHAT: _removeDocument failed: $e\n$stack');
-    }
-  }
-
-  /// Open a bottom sheet showing what's known about an indexed doc.
-  /// The original bytes aren't kept around (only chunks in the vector
-  /// store), so for now the preview shows metadata + suggested questions.
-  /// v2 can fetch chunk contents back by id and show them in full.
+  /// Open a bottom sheet showing the indexed document chunks. The original
+  /// bytes are not kept around; preview is rebuilt from the vector store text.
   Future<void> _previewDocument(String docId) async {
     final doc = await DocumentStore.instance.getById(docId);
     if (doc == null || !mounted) return;
@@ -568,6 +921,8 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _retry() async {
     final text = _lastFailedText;
     final image = _lastFailedImage;
+    final imageName = _lastFailedImageName;
+    final imageSummary = _lastFailedImageSummary;
     if (text == null) return;
     setState(() {
       // Drop the last two messages (the user msg + the failed assistant msg)
@@ -577,18 +932,137 @@ class _ChatScreenState extends State<ChatScreen> {
         _conversation.messages.removeLast();
       }
       _pendingImage = image;
+      _pendingImageName = imageName;
+      _pendingImageSummary = imageSummary;
       _lastFailedText = null;
       _lastFailedImage = null;
+      _lastFailedImageName = null;
+      _lastFailedImageSummary = null;
     });
     await _handleSend(text);
+  }
+
+  Future<void> _regenerateLatestAssistant() async {
+    if (_busy || _conversation.messages.isEmpty) return;
+    final assistantIndex = _conversation.messages.length - 1;
+    final assistant = _conversation.messages[assistantIndex];
+    if (!assistant.isAssistant) return;
+
+    Message? userMsg;
+    int? userIndex;
+    for (var i = assistantIndex - 1; i >= 0; i--) {
+      final msg = _conversation.messages[i];
+      if (msg.isUser) {
+        userMsg = msg;
+        userIndex = i;
+        break;
+      }
+    }
+    if (userMsg == null) return;
+
+    setState(() {
+      _conversation.messages[assistantIndex] = assistant.copyWith(text: '');
+      _busy = true;
+      _thinkingStatus = StatusWords.random();
+    });
+    _scrollToBottom();
+
+    var prompt = _buildPromptFromHistory(_messageTextForPrompt(userMsg));
+    final retrievalQuery = userMsg.text.trim().isEmpty && userMsg.hasDoc
+        ? 'summarize the document ${userMsg.attachedDocName}'
+        : userMsg.text;
+    if (_documents.isNotEmpty && _looksLikeDocumentQuery(retrievalQuery)) {
+      try {
+        var hits = await RagService.instance.retrieve(
+          query: retrievalQuery,
+          conversationId: _conversation.id,
+        );
+        if (hits.length <= 1 && _looksLikeDocumentQuery(retrievalQuery)) {
+          hits = await RagService.instance.getDocStarts(
+            conversationId: _conversation.id,
+          );
+        }
+        if (hits.isNotEmpty) {
+          prompt = _prependRetrievedContext(prompt: prompt, hits: hits);
+        }
+      } catch (e, stack) {
+        debugPrint('🐾 CHAT: regenerate retrieval failed: $e\n$stack');
+      }
+    }
+
+    try {
+      final responseBuffer = StringBuffer();
+      await GemmaService.instance.generate(
+        prompt,
+        imageBytes: userMsg.imageBytes,
+        userName: PrefsService.instance.current.name,
+        onToken: (chunk) {
+          responseBuffer.write(chunk);
+          if (!mounted) return;
+          setState(() {
+            _conversation.messages[assistantIndex] = _conversation
+                .messages[assistantIndex]
+                .copyWith(text: responseBuffer.toString());
+          });
+          _scrollToBottom();
+        },
+      );
+      if (mounted) {
+        setState(() {
+          final current = _conversation.messages[assistantIndex];
+          _conversation.messages[assistantIndex] = current.copyWith(
+            text: _withContinuationHintIfNeeded(current.text),
+          );
+        });
+      }
+    } catch (e, stack) {
+      debugPrint('🐾 CHAT: regenerate failed: $e\n$stack');
+      if (!mounted) return;
+      setState(() {
+        _lastFailedText = userMsg!.text;
+        _lastFailedImage = userMsg.imageBytes;
+        _lastFailedImageName = userMsg.imageName;
+        _lastFailedImageSummary = userMsg.imageSummary;
+        _conversation.messages[assistantIndex] = _conversation
+            .messages[assistantIndex]
+            .copyWith(text: '__CLAW_ERROR__');
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          if (_conversation.messages[assistantIndex].text != '__CLAW_ERROR__' &&
+              _conversation.messages[assistantIndex].text.isNotEmpty) {
+            _lastFailedText = null;
+            _lastFailedImage = null;
+            _lastFailedImageName = null;
+            _lastFailedImageSummary = null;
+          }
+          if (userIndex != null && _conversation.messages[userIndex].hasImage) {
+            final userImageMsg = _conversation.messages[userIndex];
+            _conversation.messages[userIndex] = userImageMsg.copyWith(
+              imageSummary: _imageMemoryFromAssistant(
+                imageName: userImageMsg.imageName,
+                assistantText: _conversation.messages[assistantIndex].text,
+                existingSummary: userImageMsg.imageSummary,
+              ),
+            );
+          }
+        });
+      }
+      try {
+        await ConversationStore.instance.save(_conversation);
+      } catch (e, stack) {
+        debugPrint('🐾 CHAT: regenerate save failed: $e\n$stack');
+      }
+    }
   }
 
   Future<void> _openConversationList() async {
     final picked = await Navigator.of(context).push<Conversation?>(
       MaterialPageRoute(
-        builder: (_) => ConversationListScreen(
-          currentConversationId: _conversation.id,
-        ),
+        builder: (_) =>
+            ConversationListScreen(currentConversationId: _conversation.id),
       ),
     );
     if (picked == null || !mounted) return;
@@ -596,15 +1070,17 @@ class _ChatScreenState extends State<ChatScreen> {
     if (picked.id == 'NEW') {
       setState(() {
         _conversation = Conversation();
-        _compactionNote = null;
         _documents = const [];
+        _pendingDocument = null;
+        _pendingDocumentText = null;
       });
       _loadDocuments();
     } else {
       setState(() {
         _conversation = picked;
-        _compactionNote = null;
         _documents = const [];
+        _pendingDocument = null;
+        _pendingDocumentText = null;
       });
       _loadDocuments();
     }
@@ -619,10 +1095,7 @@ class _ChatScreenState extends State<ChatScreen> {
           onPressed: _openConversationList,
           tooltip: 'Conversations',
         ),
-        title: Text(
-          _conversation.title,
-          overflow: TextOverflow.ellipsis,
-        ),
+        title: Text(_conversation.title, overflow: TextOverflow.ellipsis),
         actions: [
           PopupMenuButton<String>(
             onSelected: (value) {
@@ -630,8 +1103,9 @@ class _ChatScreenState extends State<ChatScreen> {
               if (value == 'clear') {
                 setState(() {
                   _conversation = Conversation();
-                  _compactionNote = null;
                   _documents = const [];
+                  _pendingDocument = null;
+                  _pendingDocumentText = null;
                 });
                 _loadDocuments();
               }
@@ -648,41 +1122,96 @@ class _ChatScreenState extends State<ChatScreen> {
           ValueListenableBuilder<GemmaState>(
             valueListenable: GemmaService.instance.state,
             builder: (context, state, _) {
-              if (state == GemmaState.ready ||
-                  state == GemmaState.generating) {
+              if (state == GemmaState.ready || state == GemmaState.generating) {
                 return const SizedBox.shrink();
               }
               return Material(
-                color: Theme.of(context).colorScheme.surfaceContainer,
+                color: Colors.transparent,
                 child: Padding(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 12,
                     vertical: 8,
                   ),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.info_outline, size: 18),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          _bannerForState(state),
-                          style: Theme.of(context).textTheme.bodySmall,
-                        ),
+                  child: DecoratedBox(
+                    decoration: PocketClawTheme.panel(
+                      color: PocketClawTheme.bg2,
+                      border: PocketClawTheme.warning,
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
                       ),
-                      if (state == GemmaState.error)
-                        TextButton(
-                          onPressed: () {
-                            // Re-bootstrap Gemma. init() is safe to call again.
-                            GemmaService.instance.init();
-                          },
-                          child: const Text('Retry'),
-                        ),
-                      if (state == GemmaState.notInstalled)
-                        TextButton(
-                          onPressed: widget.onOpenDiagnostics,
-                          child: const Text('Set up'),
-                        ),
-                    ],
+                      child: Row(
+                        children: [
+                          const Icon(Icons.info_outline, size: 18),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              _bannerForState(state),
+                              style: Theme.of(context).textTheme.bodySmall,
+                            ),
+                          ),
+                          if (state == GemmaState.error)
+                            TextButton(
+                              onPressed: _retrySetup,
+                              child: const Text('Retry'),
+                            ),
+                          if (state == GemmaState.notInstalled)
+                            TextButton(
+                              onPressed: widget.onOpenDiagnostics,
+                              child: const Text('Set up'),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+          ValueListenableBuilder<EmbedderState>(
+            valueListenable: GemmaService.instance.embedderState,
+            builder: (context, state, _) {
+              if (state == EmbedderState.installed) {
+                return const SizedBox.shrink();
+              }
+              return Material(
+                color: Colors.transparent,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
+                  child: DecoratedBox(
+                    decoration: PocketClawTheme.panel(
+                      color: PocketClawTheme.bg2,
+                      border: PocketClawTheme.purple,
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.info_outline, size: 18),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              _bannerForEmbedderState(state),
+                              style: Theme.of(context).textTheme.bodySmall,
+                            ),
+                          ),
+                          if (state == EmbedderState.error ||
+                              state == EmbedderState.notInstalled)
+                            TextButton(
+                              onPressed: _retrySetup,
+                              child: const Text('Retry'),
+                            ),
+                        ],
+                      ),
+                    ),
                   ),
                 ),
               );
@@ -696,39 +1225,65 @@ class _ChatScreenState extends State<ChatScreen> {
                     padding: const EdgeInsets.symmetric(vertical: 8),
                     itemCount: _conversation.messages.length,
                     itemBuilder: (_, i) {
-                    final m = _conversation.messages[i];
-                    // Only attach retry to the last message if it's a failed one.
-                    final isLastFailed = i == _conversation.messages.length - 1 &&
-                        m.text == '__CLAW_ERROR__';
-                    return MessageBubble(
-                      message: m,
-                      onRetry: isLastFailed ? _retry : null,
-                      onDocTap: m.hasDoc
-                          ? () => _previewDocument(m.attachedDocId!)
-                          : null,
-                    );
-                  },
+                      final m = _conversation.messages[i];
+                      // Only attach retry to the last message if it's a failed one.
+                      final isLastFailed =
+                          i == _conversation.messages.length - 1 &&
+                          m.text == '__CLAW_ERROR__';
+                      return MessageBubble(
+                        message: m,
+                        loadingText: m.isAssistant && m.text.isEmpty && _busy
+                            ? _thinkingStatus
+                            : null,
+                        onRetry: isLastFailed
+                            ? _retry
+                            : i == _conversation.messages.length - 1 &&
+                                  m.isAssistant &&
+                                  m.text.isNotEmpty
+                            ? _regenerateLatestAssistant
+                            : null,
+                        onDocTap: m.hasDoc
+                            ? () => _previewDocument(m.attachedDocId!)
+                            : null,
+                      );
+                    },
                   ),
           ),
-          if (_documents.isNotEmpty)
-            _DocumentChipsBar(
-              documents: _documents,
-              onRemove: _removeDocument,
-              onTap: (d) => _previewDocument(d.id),
+          if (_indexing)
+            _IndexingDocumentBanner(
+              name: _indexingDocumentName ?? 'document',
+              status: _indexingStatus,
             ),
           ValueListenableBuilder<GemmaState>(
             valueListenable: GemmaService.instance.state,
             builder: (context, state, _) {
-              final modelReady = state == GemmaState.ready ||
-                  state == GemmaState.generating;
-              return ChatInput(
-                onSend: _handleSend,
-                enabled: !_busy && modelReady,
-                attachedImage: _pendingImage,
-                attachedImageName: _pendingImageName,
-                onAttachImage: _pickImage,
-                onClearAttachment: _clearAttachment,
-                onAttachDocument: _pickAndIndexDocument,
+              final modelReady =
+                  state == GemmaState.ready || state == GemmaState.generating;
+              return ValueListenableBuilder<EmbedderState>(
+                valueListenable: GemmaService.instance.embedderState,
+                builder: (context, embedderState, _) {
+                  final embedderReady =
+                      embedderState == EmbedderState.installed;
+                  return ChatInput(
+                    onSend: _handleSend,
+                    enabled: !_busy && modelReady && embedderReady,
+                    attachedImage: _pendingImage,
+                    attachedImageName: _pendingImageName,
+                    attachedDocumentName: _pendingDocument?.name,
+                    attachedDocumentSectionCount: _pendingDocument?.chunkCount,
+                    preparingAttachment: _preparingImageSummary || _indexing,
+                    disabledHint: _busy
+                        ? '$_thinkingStatus...'
+                        : _indexing
+                        ? '$_indexingStatus...'
+                        : _preparingImageSummary
+                        ? '$_thinkingStatus...'
+                        : null,
+                    onAttachImage: _pickImage,
+                    onAttachDocument: _pickAndIndexDocument,
+                    onClearAttachment: _clearAttachment,
+                  );
+                },
               );
             },
           ),
@@ -742,16 +1297,50 @@ class _ChatScreenState extends State<ChatScreen> {
       case GemmaState.notInstalled:
         return 'Claw needs to finish setup before you can chat.';
       case GemmaState.installing:
-        return 'Setting up Claw…';
+        return '$_thinkingStatus...';
       case GemmaState.installed:
-        return 'Almost ready…';
+        return '$_thinkingStatus...';
       case GemmaState.loading:
-        return 'Almost ready…';
+        return '$_thinkingStatus...';
       case GemmaState.error:
-        return 'Couldn\'t start Claw. Check your connection and try again.';
+        return 'Couldn\'t start Claw. Please try again.';
       case GemmaState.ready:
       case GemmaState.generating:
         return '';
+    }
+  }
+
+  String _bannerForEmbedderState(EmbedderState state) {
+    switch (state) {
+      case EmbedderState.notInstalled:
+        return 'Claw needs document understanding setup before you can chat.';
+      case EmbedderState.installing:
+        return '$_indexingStatus...';
+      case EmbedderState.error:
+        return 'Document understanding setup failed. Retry to finish setup.';
+      case EmbedderState.installed:
+        return '';
+    }
+  }
+
+  Future<void> _retrySetup() async {
+    try {
+      if (GemmaService.instance.state.value == GemmaState.error) {
+        await GemmaService.instance.init();
+      }
+      if (GemmaService.instance.state.value == GemmaState.notInstalled ||
+          GemmaService.instance.state.value == GemmaState.error) {
+        await GemmaService.instance.ensureInstalled();
+      }
+      if (GemmaService.instance.state.value == GemmaState.installed) {
+        await GemmaService.instance.ensureLoaded();
+      }
+      if (GemmaService.instance.embedderState.value !=
+          EmbedderState.installed) {
+        await GemmaService.instance.installEmbedder();
+      }
+    } catch (e, stack) {
+      debugPrint('🐾 CHAT: retry setup failed: $e\n$stack');
     }
   }
 }
@@ -768,7 +1357,15 @@ class _EmptyState extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Text('🐾', style: TextStyle(fontSize: 48)),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(18),
+              child: Image.asset(
+                'assets/images/pocketclaw_icon.png',
+                width: 72,
+                height: 72,
+                fit: BoxFit.cover,
+              ),
+            ),
             const SizedBox(height: 16),
             Text('Ask Claw anything', style: theme.textTheme.titleLarge),
             const SizedBox(height: 8),
@@ -786,47 +1383,49 @@ class _EmptyState extends StatelessWidget {
   }
 }
 
-class _DocumentChipsBar extends StatelessWidget {
-  const _DocumentChipsBar({
-    required this.documents,
-    required this.onRemove,
-    required this.onTap,
-  });
+class _IndexingDocumentBanner extends StatelessWidget {
+  const _IndexingDocumentBanner({required this.name, required this.status});
 
-  final List<Document> documents;
-  final void Function(Document) onRemove;
-  final void Function(Document) onTap;
+  final String name;
+  final String status;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Container(
-      height: 48,
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      color: theme.colorScheme.surface,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        itemCount: documents.length,
-        separatorBuilder: (_, _) => const SizedBox(width: 6),
-        itemBuilder: (_, i) {
-          final d = documents[i];
-          return InputChip(
-            avatar: const Icon(Icons.description_outlined, size: 18),
-            label: Text(
-              d.name,
-              style: theme.textTheme.bodySmall,
-              overflow: TextOverflow.ellipsis,
+    return Material(
+      color: Colors.transparent,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        child: DecoratedBox(
+          decoration: PocketClawTheme.panel(
+            color: PocketClawTheme.bg3,
+            border: PocketClawTheme.mint,
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            child: Row(
+              children: [
+                const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    '$status $name...',
+                    style: theme.textTheme.bodySmall,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
             ),
-            onPressed: () => onTap(d),
-            onDeleted: () => onRemove(d),
-            deleteIcon: const Icon(Icons.close, size: 16),
-          );
-        },
+          ),
+        ),
       ),
     );
   }
 }
-
 
 class _DocumentPreviewSheet extends StatefulWidget {
   const _DocumentPreviewSheet({required this.document});
@@ -839,6 +1438,7 @@ class _DocumentPreviewSheet extends StatefulWidget {
 
 class _DocumentPreviewSheetState extends State<_DocumentPreviewSheet> {
   late Future<List<RetrievedChunk>> _chunksFuture;
+  final String _previewStatus = StatusWords.random();
 
   @override
   void initState() {
@@ -848,8 +1448,9 @@ class _DocumentPreviewSheetState extends State<_DocumentPreviewSheet> {
           conversationId: widget.document.conversationId,
           perDocLimit: widget.document.chunkCount,
         )
-        .then((all) =>
-            all.where((c) => c.docName == widget.document.name).toList());
+        .then(
+          (all) => all.where((c) => c.docName == widget.document.name).toList(),
+        );
   }
 
   @override
@@ -861,9 +1462,12 @@ class _DocumentPreviewSheetState extends State<_DocumentPreviewSheet> {
       maxChildSize: 0.95,
       expand: false,
       builder: (_, scrollCtrl) => Container(
-        decoration: BoxDecoration(
-          color: theme.colorScheme.surface,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+        decoration: const BoxDecoration(
+          color: PocketClawTheme.bg2,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(8)),
+          border: Border(
+            top: BorderSide(color: PocketClawTheme.cyan, width: 3),
+          ),
         ),
         child: Column(
           children: [
@@ -872,7 +1476,9 @@ class _DocumentPreviewSheetState extends State<_DocumentPreviewSheet> {
               width: 40,
               height: 4,
               decoration: BoxDecoration(
-                color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
+                color: theme.colorScheme.onSurfaceVariant.withValues(
+                  alpha: 0.3,
+                ),
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
@@ -881,8 +1487,10 @@ class _DocumentPreviewSheetState extends State<_DocumentPreviewSheet> {
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Row(
                 children: [
-                  Icon(Icons.description_outlined,
-                      color: theme.colorScheme.primary),
+                  const Icon(
+                    Icons.description_outlined,
+                    color: PocketClawTheme.cyan,
+                  ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Column(
@@ -915,11 +1523,19 @@ class _DocumentPreviewSheetState extends State<_DocumentPreviewSheet> {
                 future: _chunksFuture,
                 builder: (context, snap) {
                   if (snap.connectionState != ConnectionState.done) {
-                    return const Center(
-                        child: Padding(
-                      padding: EdgeInsets.all(24),
-                      child: CircularProgressIndicator(),
-                    ));
+                    return Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const CircularProgressIndicator(),
+                            const SizedBox(height: 12),
+                            Text('$_previewStatus...'),
+                          ],
+                        ),
+                      ),
+                    );
                   }
                   final chunks = snap.data ?? const [];
                   if (chunks.isEmpty) {

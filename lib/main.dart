@@ -15,6 +15,7 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 
+import 'core/pocketclaw_theme.dart';
 import 'screens/chat_screen.dart';
 import 'screens/diagnostics_screen.dart';
 import 'services/gemma_service.dart';
@@ -64,21 +65,23 @@ class _ClawBubble extends StatelessWidget {
       child: GestureDetector(
         onTap: _onTap,
         child: Container(
-          width: 64,
-          height: 64,
+          width: 68,
+          height: 68,
           decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: Colors.deepPurple,
-            boxShadow: const [
-              BoxShadow(
-                color: Colors.black38,
-                blurRadius: 8,
-                offset: Offset(0, 2),
-              ),
-            ],
+            color: PocketClawTheme.bg2,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: PocketClawTheme.cyan, width: 3),
+            boxShadow: const [PocketClawTheme.hardShadow],
           ),
-          child: const Center(
-            child: Text('🐾', style: TextStyle(fontSize: 28)),
+          child: Center(
+            child: ClipOval(
+              child: Image.asset(
+                'assets/images/pocketclaw_icon.png',
+                width: 56,
+                height: 56,
+                fit: BoxFit.cover,
+              ),
+            ),
           ),
         ),
       ),
@@ -134,20 +137,8 @@ class PocketClawApp extends StatelessWidget {
     return MaterialApp(
       title: 'PocketClaw',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: Colors.deepPurple,
-          brightness: Brightness.light,
-        ),
-      ),
-      darkTheme: ThemeData(
-        useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: Colors.deepPurple,
-          brightness: Brightness.dark,
-        ),
-      ),
+      theme: PocketClawTheme.dark(),
+      darkTheme: PocketClawTheme.dark(),
       home: const _RootRouter(),
     );
   }
@@ -193,7 +184,9 @@ class _RootRouterState extends State<_RootRouter> {
       builder: (context, snapshot) {
         if (!snapshot.hasData) {
           // Brief flash while we load the list. Material splash background.
-          return const Scaffold(body: Center(child: CircularProgressIndicator()));
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
         }
         final convs = snapshot.data!;
         // Auto-resume: most-recent conversation (loadAll sorts desc).
@@ -202,9 +195,7 @@ class _RootRouterState extends State<_RootRouter> {
           conversation: initial,
           onOpenDiagnostics: () {
             Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) => const DiagnosticsScreen(),
-              ),
+              MaterialPageRoute(builder: (_) => const DiagnosticsScreen()),
             );
           },
         );
