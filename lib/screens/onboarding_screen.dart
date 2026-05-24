@@ -273,8 +273,8 @@ class _DownloadExplainerStep extends StatelessWidget {
             icon: Icons.download_outlined,
             title: 'One-time download',
             body:
-                'Claw is about 1.5 GB. It downloads once, then runs '
-                'entirely offline.',
+                'Claw is powered by Gemma 4 — Google DeepMind’s open model. The brain is about 1.5 GB, downloads once, then runs '
+                'entirely offline. No data leaves your phone.',
           ),
           const SizedBox(height: 12),
           _Bullet(
@@ -487,7 +487,7 @@ class _ProgressStep extends StatelessWidget {
     final embedder = GemmaService.instance.embedderState.value;
     switch (state) {
       case GemmaState.installing:
-        return "Downloading Claw (about 1.5 GB). This takes a few minutes — you can leave the screen on.";
+        return "Setting up Claw — powered by Gemma 4. This takes a moment…";
       case GemmaState.loading:
       case GemmaState.installed:
         if (embedder == EmbedderState.installing) {
