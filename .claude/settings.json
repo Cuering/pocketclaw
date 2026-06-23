@@ -1,0 +1,47 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "dart format $CLAUDE_TOOL_INPUT_PATH 2>/dev/null; true"
+          }
+        ]
+      }
+    ]
+  },
+  "permissions": {
+    "allow": [
+      "Bash(flutter pub get*)",
+      "Bash(flutter pub upgrade*)",
+      "Bash(flutter analyze*)",
+      "Bash(flutter test*)",
+      "Bash(flutter run*)",
+      "Bash(flutter build*)",
+      "Bash(dart format*)",
+      "Bash(dart fix*)",
+      "Bash(dart analyze*)",
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "Bash(git status*)",
+      "Bash(git add*)",
+      "Bash(git branch*)",
+      "Bash(git checkout*)",
+      "Bash(git fetch*)",
+      "Bash(git pull*)",
+      "Bash(semble*)",
+      "Bash(flutter devices*)",
+      "Bash(flutter doctor*)",
+      "Bash(flutter pub deps*)",
+      "Bash(find . -name*)",
+      "Bash(grep -*)"
+    ],
+    "deny": [
+      "Bash(git push --force*)",
+      "Bash(rm -rf lib/*)",
+      "Bash(flutter clean && flutter pub get && flutter run --release*)"
+    ]
+  }
+}
