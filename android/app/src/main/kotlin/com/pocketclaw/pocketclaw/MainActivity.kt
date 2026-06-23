@@ -155,6 +155,32 @@ class MainActivity : FlutterActivity() {
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, deviceChannelName)
             .setMethodCallHandler(deviceCallHandler)
 
+        // Register accessibility channel — routes to PocketClawAccessibilityService.instance
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "pocketclaw/accessibility")
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "isEnabled" -> result.success(PocketClawAccessibilityService.instance != null)
+                    "openAccessibilitySettings" -> {
+                        val intent = android.content.Intent(
+                            android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS,
+                        ).apply { addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK) }
+                        startActivity(intent)
+                        result.success(null)
+                    }
+                    else -> {
+                        val service = PocketClawAccessibilityService.instance
+                        if (service == null) {
+                            result.success(
+                                mapOf("ok" to false,
+                                      "message" to "Accessibility service not enabled"),
+                            )
+                        } else {
+                            service.handleCall(call, result)
+                        }
+                    }
+                }
+            }
+
         // Periodically scan and register on the background engine when cached
         val handler = android.os.Handler(android.os.Looper.getMainLooper())
         val checkEngineRunnable = object : Runnable {

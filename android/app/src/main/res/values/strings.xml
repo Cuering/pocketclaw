@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="accessibility_service_description">
+        PocketClaw uses accessibility to read the screen and perform actions on your behalf.
+        No data leaves your device.
+    </string>
+</resources>
