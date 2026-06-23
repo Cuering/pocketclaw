@@ -11,19 +11,18 @@ if (GemmaService.instance.state.value != GemmaState.ready) {
   return;
 }
 
-String response = '';
-try {
-  response = await GemmaService.instance.generate(
-    prompt,
-    onToken: (chunk) {
-      if (!mounted) return;
-      setState(() => _streamBuffer += chunk);
-    },
-  );
-} catch (e) {
-  if (!mounted) return;
-  setState(() => _error = e.toString());
-}
+// generate() transitions state to GemmaState.generating while running,
+// then back to GemmaState.ready (or GemmaState.error on failure).
+// The ValueListenableBuilder watching state.value handles error display.
+await GemmaService.instance.generate(
+  prompt,
+  onToken: (chunk) {
+    if (!mounted) return;
+    setState(() => _streamBuffer += chunk);
+  },
+);
+// On error: GemmaState.error is set automatically — the widget's
+// ValueListenableBuilder rebuilds showing the error state. No try/catch needed.
 ```
 
 ## 2. Multimodal Inference (image + text)

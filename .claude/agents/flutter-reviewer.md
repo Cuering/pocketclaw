@@ -63,7 +63,7 @@ await GemmaService.instance.generate(prompt);  // no GemmaState.ready check
 
 ### Out-of-scope engine code
 Any code that adds logic to `services/primitive_engine/`,
-`services/memory_engine/`, `services/workflow_engine/`,
+`services/skill_engine/`, `services/memory_engine/`, `services/workflow_engine/`,
 `services/agent_loop/`, `services/background_task_engine/`,
 `services/dynamic_ui/`, or implements the floating overlay without explicit
 feature request.
@@ -101,6 +101,18 @@ Widget build(BuildContext context) {
   return ...;
 }
 ```
+
+### Business logic in widget
+```dart
+// WARNING
+Widget _buildSomething() {
+  // data transformation / parsing that belongs in a service
+  final processed = rawData.where((x) => x.isValid).map((x) => x.transform()).toList();
+  return ListView.builder(...);
+}
+```
+Logic that belongs in a service method (data transformation, parsing, business
+rules) written directly inside a widget. Move to a service or a model method.
 
 ## SUGGESTION Violations
 

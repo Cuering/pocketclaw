@@ -73,10 +73,10 @@ class _${ScreenName}ScreenState extends State<${ScreenName}Screen> {
 
   @override
   Widget build(BuildContext context) {
-    // [x] const on static widgets — mark when done
-    // [x] theme tokens — mark when done
-    // [x] keyboard safety — mark when done
-    // [x] responsive layout — mark when done
+    // [ ] const on static widgets — mark when done
+    // [ ] theme tokens — mark when done
+    // [ ] keyboard safety — mark when done
+    // [ ] responsive layout — mark when done
     return Scaffold(
       backgroundColor: PocketClawTheme.bg,
       appBar: AppBar(title: const Text('${ScreenName}')),
@@ -85,9 +85,9 @@ class _${ScreenName}ScreenState extends State<${ScreenName}Screen> {
   }
 
   Widget _buildBody() {
-    // [x] loading state
+    // [ ] loading state
     if (_isLoading) return const Center(child: CircularProgressIndicator());
-    // [x] error state
+    // [ ] error state
     if (_error != null) {
       return Center(
         child: Column(
@@ -100,7 +100,7 @@ class _${ScreenName}ScreenState extends State<${ScreenName}Screen> {
         ),
       );
     }
-    // [x] data state + empty state if applicable
+    // [ ] data state + empty state if applicable
     return const Center(child: Text('${ScreenName} — TODO'));
   }
 }

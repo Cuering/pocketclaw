@@ -75,10 +75,15 @@ await DocumentStore.instance.delete(doc.id);
 ```dart
 ValueListenableBuilder<RagState>(
   valueListenable: RagService.instance.state,
-  builder: (context, state, _) {
-    if (state == RagState.indexing) return IndexingProgressWidget();
-    if (state == RagState.error) return ErrorWidget(RagService.instance.lastError.toString());
-    return DocumentListWidget();
+  builder: (context, state, _) => switch (state) {
+    RagState.notReady => const CircularProgressIndicator(),
+    RagState.indexing => const Text('Indexing document...'),
+    RagState.retrieving => const Text('Searching knowledge base...'),
+    RagState.error => Text(
+        'RAG error: ${RagService.instance.lastError}',
+        style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: PocketClawTheme.error),
+      ),
+    RagState.ready => DocumentListWidget(),
   },
 )
 ```
