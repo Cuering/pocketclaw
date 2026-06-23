@@ -8,6 +8,7 @@ import '../services/device_actions_service.dart';
 import '../services/gemma_service.dart';
 // import '../services/overlay_controller_service.dart';
 import '../services/prefs_service.dart';
+import '../services/primitive_engine/primitive_engine.dart';
 
 /// First-launch onboarding. Three steps:
 ///   1. Welcome + name input
@@ -515,7 +516,8 @@ class _PermissionsStep extends StatefulWidget {
   State<_PermissionsStep> createState() => _PermissionsStepState();
 }
 
-class _PermissionsStepState extends State<_PermissionsStep> with WidgetsBindingObserver {
+class _PermissionsStepState extends State<_PermissionsStep>
+    with WidgetsBindingObserver {
   // ignore: unused_field
   bool _overlayGranted = false;
   bool _micGranted = false;
@@ -523,6 +525,7 @@ class _PermissionsStepState extends State<_PermissionsStep> with WidgetsBindingO
   bool _cameraGranted = false;
   // ignore: unused_field
   bool _notificationGranted = false;
+  bool _accessibilityGranted = false;
 
   @override
   void initState() {
@@ -548,14 +551,15 @@ class _PermissionsStepState extends State<_PermissionsStep> with WidgetsBindingO
     // final overlay = await FlutterOverlayWindow.isPermissionGranted();
     const overlay = false;
     final status = await DeviceActionsService.instance.checkAppPermissions();
-    if (mounted) {
-      setState(() {
-        _overlayGranted = overlay;
-        _micGranted = status['mic'] ?? false;
-        _cameraGranted = status['camera'] ?? false;
-        _notificationGranted = status['notifications'] ?? false;
-      });
-    }
+    final accessibility = await PrimitiveEngine.instance.isAccessibilityEnabled();
+    if (!mounted) return;
+    setState(() {
+      _overlayGranted = overlay;
+      _micGranted = status['mic'] ?? false;
+      _cameraGranted = status['camera'] ?? false;
+      _notificationGranted = status['notifications'] ?? false;
+      _accessibilityGranted = accessibility;
+    });
   }
 
   // ignore: unused_element
@@ -568,6 +572,11 @@ class _PermissionsStepState extends State<_PermissionsStep> with WidgetsBindingO
     await DeviceActionsService.instance.requestAppPermissions();
     await Future<void>.delayed(const Duration(milliseconds: 500));
     await _checkPermissions();
+  }
+
+  Future<void> _grantAccessibility() async {
+    await PrimitiveEngine.instance.openAccessibilitySettings();
+    // Grant detected on resume via didChangeAppLifecycleState
   }
 
   @override
@@ -607,6 +616,14 @@ class _PermissionsStepState extends State<_PermissionsStep> with WidgetsBindingO
             description: 'For voice dictation inside the chat.',
             granted: _micGranted,
             onGrant: _grantSystem,
+          ),
+          const SizedBox(height: 12),
+          _PermissionRow(
+            icon: Icons.accessibility_new,
+            title: 'Accessibility',
+            description: 'Lets Claw tap, type, and read the screen to run skills.',
+            granted: _accessibilityGranted,
+            onGrant: _grantAccessibility,
           ),
           // const SizedBox(height: 12),
           // _PermissionRow(
