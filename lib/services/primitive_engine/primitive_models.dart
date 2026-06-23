@@ -1,5 +1,3 @@
-import 'package:flutter/foundation.dart';
-
 enum PrimitiveState { idle, running, error }
 
 class PrimitiveStep {
@@ -14,8 +12,15 @@ class PrimitiveStep {
       throw ArgumentError('Missing required field: primitive');
     }
     const supported = {
-      'open_app', 'tap', 'type', 'scroll', 'swipe',
-      'back', 'read_screen', 'read_clipboard', 'take_screenshot',
+      'open_app',
+      'tap',
+      'type',
+      'scroll',
+      'swipe',
+      'back',
+      'read_screen',
+      'read_clipboard',
+      'take_screenshot',
     };
     if (!supported.contains(primitive)) {
       throw ArgumentError('Unknown primitive: $primitive');

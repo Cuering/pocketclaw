@@ -216,7 +216,11 @@ class PocketClawAccessibilityService : AccessibilityService() {
                         val bitmap = Bitmap.wrapHardwareBuffer(
                             screenshot.hardwareBuffer,
                             screenshot.colorSpace,
-                        )!!
+                        ) ?: run {
+                            result.success(fail("Screenshot: could not wrap hardware buffer"))
+                            screenshot.hardwareBuffer.close()
+                            return
+                        }
                         val file = java.io.File(
                             cacheDir,
                             "screenshot_${System.currentTimeMillis()}.png",
@@ -244,8 +248,10 @@ class PocketClawAccessibilityService : AccessibilityService() {
 
     private fun findNode(selector: String): AccessibilityNodeInfo? {
         val root = rootInActiveWindow ?: return null
-        return (root.findAccessibilityNodeInfosByText(selector)?.firstOrNull()
-            ?: root.findAccessibilityNodeInfosByViewId(selector)?.firstOrNull())
+        val found = root.findAccessibilityNodeInfosByText(selector)?.firstOrNull()
+            ?: root.findAccessibilityNodeInfosByViewId(selector)?.firstOrNull()
+        root.recycle()
+        return found
     }
 
     private fun ok(message: String): Map<String, Any> =
