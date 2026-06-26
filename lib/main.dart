@@ -11,15 +11,15 @@
 // (kMainPortName) registered by ChatScreen / DiagnosticsScreen.
 
 import 'dart:async';
-// import 'dart:isolate';
-// import 'dart:ui';
+import 'dart:isolate';
+import 'dart:ui';
 
 import 'package:flutter/material.dart';
-// import 'package:flutter_overlay_window/flutter_overlay_window.dart';
+import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 
 import 'core/pocketclaw_theme.dart';
 import 'screens/chat_screen.dart';
-// import 'services/device_actions_service.dart';
+import 'services/device_actions_service.dart';
 import 'services/gemma_service.dart';
 import 'services/prefs_service.dart';
 import 'services/rag_service.dart';
@@ -27,14 +27,13 @@ import 'screens/onboarding_screen.dart';
 import 'models/conversation.dart';
 import 'services/conversation_store.dart';
 import 'services/document_store.dart';
-// import 'services/overlay_controller_service.dart';
+import 'services/overlay_controller_service.dart';
 
 // Shared port name. Must match what listeners register under
 // IsolateNameServer.registerPortWithName(...). The diagnostics screen
 // declares its own const with the same value for use inside that file.
 const String kMainPortName = 'pocketclaw_main_port';
 
-/*
 // ─────────────────────────────────────────────────────────────────────────
 // OVERLAY ISOLATE
 // ─────────────────────────────────────────────────────────────────────────
@@ -224,6 +223,13 @@ class _ClawBubbleState extends State<_ClawBubble> {
         ),
       ),
     );
+  }
+
+  Widget _buildExpanded() {
+    if (_listening || _thinking || _responseSpeechText != null) {
+      return _voicePanel();
+    }
+    return _expandedPanel();
   }
 
   Widget _voicePanel() {
@@ -462,7 +468,6 @@ class _OverlayIconButton extends StatelessWidget {
     );
   }
 }
-*/
 
 // ─────────────────────────────────────────────────────────────────────────
 // MAIN ISOLATE

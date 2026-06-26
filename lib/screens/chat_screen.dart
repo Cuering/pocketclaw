@@ -6,7 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:syncfusion_flutter_pdf/pdf.dart';
-// import 'package:flutter_overlay_window/flutter_overlay_window.dart';
+import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 
 import '../core/pocketclaw_theme.dart';
 import '../core/status_words.dart';
@@ -1273,20 +1273,14 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     }
   }
 
-  // Future<void> _setOverlayEnabled(bool enabled) async {
-  //   final applied = await OverlayControllerService.instance.setEnabled(enabled);
-  //   if (!mounted) return;
-  //   setState(() {});
-  //   if (enabled && !applied) {
-  //     _showSnack('Enable display-over-apps permission, then try again.');
-  //   } else if (enabled) {
-  //     _showSnack(
-  //       'Overlay enabled. It appears when PocketClaw is in background.',
-  //     );
-  //   } else {
-  //     _showSnack('Overlay deactivated.');
-  //   }
-  // }
+  Future<void> _setOverlayEnabled(bool enabled) async {
+    final applied = await OverlayControllerService.instance.setEnabled(enabled);
+    if (!mounted) return;
+    setState(() {});
+    if (!applied && enabled) {
+      _showSnack('Display Over Apps permission required.');
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1326,10 +1320,10 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       ),
       body: Column(
         children: [
-          // _OverlayPreferenceCard(
-          //   enabled: PrefsService.instance.current.overlayEnabled,
-          //   onChanged: _setOverlayEnabled,
-          // ),
+          _OverlayPreferenceCard(
+            enabled: PrefsService.instance.current.overlayEnabled,
+            onChanged: _setOverlayEnabled,
+          ),
           ValueListenableBuilder<GemmaState>(
             valueListenable: GemmaService.instance.state,
             builder: (context, state, _) {
@@ -1594,55 +1588,55 @@ class _EmptyState extends StatelessWidget {
   }
 }
 
-// class _OverlayPreferenceCard extends StatelessWidget {
-//   const _OverlayPreferenceCard({
-//     required this.enabled,
-//     required this.onChanged,
-//   });
-//
-//   final bool enabled;
-//   final ValueChanged<bool> onChanged;
-//
-//   @override
-//   Widget build(BuildContext context) {
-//     final theme = Theme.of(context);
-//     return Padding(
-//       padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
-//       child: DecoratedBox(
-//         decoration: PocketClawTheme.panel(
-//           color: PocketClawTheme.bg2,
-//           border: enabled ? PocketClawTheme.mint : PocketClawTheme.cyan,
-//           shadow: false,
-//         ),
-//         child: Padding(
-//           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-//           child: Row(
-//             children: [
-//               const Icon(Icons.open_in_new, size: 18),
-//               const SizedBox(width: 10),
-//               Expanded(
-//                 child: Column(
-//                   crossAxisAlignment: CrossAxisAlignment.start,
-//                   children: [
-//                     Text('Overlay', style: theme.textTheme.titleSmall),
-//                     const SizedBox(height: 2),
-//                     Text(
-//                       enabled
-//                           ? 'Active when PocketClaw is in background.'
-//                           : 'Off. Turn on for the floating assistant.',
-//                       style: theme.textTheme.labelSmall,
-//                     ),
-//                   ],
-//                 ),
-//               ),
-//               Switch(value: enabled, onChanged: onChanged),
-//             ],
-//           ),
-//         ),
-//       ),
-//     );
-//   }
-// }
+class _OverlayPreferenceCard extends StatelessWidget {
+  const _OverlayPreferenceCard({
+    required this.enabled,
+    required this.onChanged,
+  });
+
+  final bool enabled;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+      child: DecoratedBox(
+        decoration: PocketClawTheme.panel(
+          color: PocketClawTheme.bg2,
+          border: enabled ? PocketClawTheme.mint : PocketClawTheme.cyan,
+          shadow: false,
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          child: Row(
+            children: [
+              const Icon(Icons.open_in_new, size: 18),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Overlay', style: theme.textTheme.titleSmall),
+                    const SizedBox(height: 2),
+                    Text(
+                      enabled
+                          ? 'Active when PocketClaw is in background.'
+                          : 'Off. Turn on for the floating assistant.',
+                      style: theme.textTheme.labelSmall,
+                    ),
+                  ],
+                ),
+              ),
+              Switch(value: enabled, onChanged: onChanged),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 class _IndexingDocumentBanner extends StatelessWidget {
   const _IndexingDocumentBanner({required this.name, required this.status});

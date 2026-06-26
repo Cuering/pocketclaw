@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
-// import 'package:flutter_overlay_window/flutter_overlay_window.dart';
+import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 
 import '../core/pocketclaw_theme.dart';
 import '../core/status_words.dart';
 import '../models/user_prefs.dart';
 import '../services/device_actions_service.dart';
 import '../services/gemma_service.dart';
-// import '../services/overlay_controller_service.dart';
+import '../services/overlay_controller_service.dart';
 import '../services/prefs_service.dart';
 import '../services/primitive_engine/primitive_engine.dart';
 
@@ -518,7 +518,6 @@ class _PermissionsStep extends StatefulWidget {
 
 class _PermissionsStepState extends State<_PermissionsStep>
     with WidgetsBindingObserver {
-  // ignore: unused_field
   bool _overlayGranted = false;
   bool _micGranted = false;
   // ignore: unused_field
@@ -548,8 +547,7 @@ class _PermissionsStepState extends State<_PermissionsStep>
   }
 
   Future<void> _checkPermissions() async {
-    // final overlay = await FlutterOverlayWindow.isPermissionGranted();
-    const overlay = false;
+    final overlay = await FlutterOverlayWindow.isPermissionGranted();
     final status = await DeviceActionsService.instance.checkAppPermissions();
     final accessibility = await PrimitiveEngine.instance.isAccessibilityEnabled();
     if (!mounted) return;
@@ -562,9 +560,8 @@ class _PermissionsStepState extends State<_PermissionsStep>
     });
   }
 
-  // ignore: unused_element
   Future<void> _grantOverlay() async {
-    // await OverlayControllerService.instance.ensurePermission();
+    await OverlayControllerService.instance.ensurePermission();
     await _checkPermissions();
   }
 
@@ -602,13 +599,13 @@ class _PermissionsStepState extends State<_PermissionsStep>
             ),
           ),
           const SizedBox(height: 24),
-          // _PermissionRow(
-          //   icon: Icons.open_in_new,
-          //   title: 'Display Over Apps',
-          //   description: 'Draw the floating bubble overlay.',
-          //   granted: _overlayGranted,
-          //   onGrant: _grantOverlay,
-          // ),
+          _PermissionRow(
+            icon: Icons.open_in_new,
+            title: 'Display Over Apps',
+            description: 'Draw the floating bubble overlay.',
+            granted: _overlayGranted,
+            onGrant: _grantOverlay,
+          ),
           const SizedBox(height: 12),
           _PermissionRow(
             icon: Icons.mic_none,
