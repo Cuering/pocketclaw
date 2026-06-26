@@ -158,6 +158,29 @@ an imported skill is always a fresh copy.
 
 ---
 
+## Model Prompting (enabling Source A)
+
+For Gemma to *emit* `pcui` blocks at all, the chat system prompt must document
+the format — otherwise only the deterministic `render_component` primitive path
+(Source B) produces rich UI.
+
+Decision, balancing the small on-device model's prompt budget and over-emission
+risk:
+
+- The `render_component` primitive is the **reliable workhorse** — skills and
+  workflows produce rich UI deterministically, no prompting needed.
+- Add a **concise** pcui guide (the Core 4 shapes, ~10 lines) to the chat system
+  prompt so the model *can* emit components when genuinely useful, with an
+  explicit instruction to prefer plain text and only emit a block when the data
+  is clearly tabular/structured.
+- Because the renderer degrades unknown/malformed blocks to raw text, the worst
+  case of the model never emitting (or emitting badly) is simply unused capability
+  — never a crash or a broken bubble.
+
+This makes "Both" real while keeping the primitive path as the dependable one.
+
+---
+
 ## Error Handling
 
 | Failure | Behavior |
