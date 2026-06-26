@@ -23,7 +23,9 @@ class SkillStore {
   Box<String> get box {
     final b = _box;
     if (b == null) {
-      throw StateError('SkillStore not initialized. Call init() in main() first.');
+      throw StateError(
+        'SkillStore not initialized. Call init() in main() first.',
+      );
     }
     return b;
   }
@@ -53,7 +55,9 @@ class SkillStore {
       final raw = box.get(key as String);
       if (raw == null) continue;
       try {
-        results.add(SkillModel.fromJson(jsonDecode(raw) as Map<String, dynamic>));
+        results.add(
+          SkillModel.fromJson(jsonDecode(raw) as Map<String, dynamic>),
+        );
       } catch (e) {
         debugPrint('🐾 SKILL STORE: skipping unparseable skill $key: $e');
       }

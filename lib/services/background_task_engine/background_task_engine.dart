@@ -13,8 +13,9 @@ class BackgroundTaskEngine with WidgetsBindingObserver {
   BackgroundTaskEngine._();
   static final BackgroundTaskEngine instance = BackgroundTaskEngine._();
 
-  final ValueNotifier<BackgroundTaskEngineState> _state =
-      ValueNotifier(BackgroundTaskEngineState.idle);
+  final ValueNotifier<BackgroundTaskEngineState> _state = ValueNotifier(
+    BackgroundTaskEngineState.idle,
+  );
   ValueListenable<BackgroundTaskEngineState> get state => _state;
 
   // Keyed by taskId — WorkManager hook point for Phase 5.
@@ -54,8 +55,7 @@ class BackgroundTaskEngine with WidgetsBindingObserver {
   ///
   /// runAt in the future: arms a Timer, returns the pending task immediately.
   /// Never throws.
-  Future<BackgroundTask> schedule(String workflowId,
-      {DateTime? runAt}) async {
+  Future<BackgroundTask> schedule(String workflowId, {DateTime? runAt}) async {
     try {
       final ts = DateTime.now().millisecondsSinceEpoch;
       final task = BackgroundTask(
@@ -67,7 +67,9 @@ class BackgroundTaskEngine with WidgetsBindingObserver {
         scheduledFor: runAt,
       );
       await TaskStore.instance.save(task);
-      debugPrint('🐾 TASK ENGINE: scheduled task ${task.id} for workflow $workflowId');
+      debugPrint(
+        '🐾 TASK ENGINE: scheduled task ${task.id} for workflow $workflowId',
+      );
 
       final now = DateTime.now();
       final isImmediate = runAt == null || !runAt.isAfter(now);
@@ -133,7 +135,9 @@ class BackgroundTaskEngine with WidgetsBindingObserver {
           _timers.remove(task.id);
           await _runTask(task);
         });
-        debugPrint('🐾 TASK ENGINE: re-armed task ${task.id} for ${delay.inSeconds}s');
+        debugPrint(
+          '🐾 TASK ENGINE: re-armed task ${task.id} for ${delay.inSeconds}s',
+        );
       }
     }
   }
@@ -145,7 +149,9 @@ class BackgroundTaskEngine with WidgetsBindingObserver {
     debugPrint('🐾 TASK ENGINE: running task ${task.id}');
 
     try {
-      final result = await WorkflowEngine.instance.execute(task.workflowId ?? '');
+      final result = await WorkflowEngine.instance.execute(
+        task.workflowId ?? '',
+      );
       task.status = TaskStatus.done;
       task.result = result;
       task.completedAt = DateTime.now();
