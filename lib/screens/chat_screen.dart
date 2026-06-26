@@ -27,6 +27,7 @@ import '../widgets/chat_input.dart';
 import '../widgets/message_bubble.dart';
 import 'conversation_list_screen.dart';
 import 'skills_screen.dart';
+import 'workflows_screen.dart';
 
 const String kMainPortName = 'pocketclaw_main_port';
 
@@ -1315,11 +1316,18 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                 Navigator.of(context).push(
                   MaterialPageRoute<void>(builder: (_) => const SkillsScreen()),
                 );
+              } else if (value == 'workflows') {
+                Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const WorkflowsScreen(),
+                  ),
+                );
               }
             },
             itemBuilder: (_) => const [
               PopupMenuItem(value: 'clear', child: Text('New chat')),
               PopupMenuItem(value: 'skills', child: Text('Skills')),
+              PopupMenuItem(value: 'workflows', child: Text('Workflows')),
             ],
           ),
         ],

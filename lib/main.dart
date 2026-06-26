@@ -31,6 +31,10 @@ import 'models/conversation.dart';
 import 'services/conversation_store.dart';
 import 'services/document_store.dart';
 import 'services/overlay_controller_service.dart';
+import 'services/workflow_engine/workflow_engine.dart';
+import 'services/workflow_engine/workflow_store.dart';
+import 'services/background_task_engine/background_task_engine.dart';
+import 'services/background_task_engine/task_store.dart';
 
 // Shared port name. Must match what listeners register under
 // IsolateNameServer.registerPortWithName(...). The diagnostics screen
@@ -195,8 +199,8 @@ class _ClawBubbleState extends State<_ClawBubble> {
                     color: _listening
                         ? PocketClawTheme.purple
                         : _thinking
-                            ? PocketClawTheme.cyan
-                            : PocketClawTheme.cyan,
+                        ? PocketClawTheme.cyan
+                        : PocketClawTheme.cyan,
                     width: 3,
                   ),
                   boxShadow: const [PocketClawTheme.hardShadow],
@@ -241,16 +245,26 @@ class _ClawBubbleState extends State<_ClawBubble> {
         Row(
           children: [
             Icon(
-              _listening ? Icons.mic : _thinking ? Icons.psychology : Icons.record_voice_over,
+              _listening
+                  ? Icons.mic
+                  : _thinking
+                  ? Icons.psychology
+                  : Icons.record_voice_over,
               color: _listening ? PocketClawTheme.purple : PocketClawTheme.cyan,
               size: 18,
             ),
             const SizedBox(width: 6),
             Expanded(
               child: Text(
-                _listening ? 'LISTENING' : _thinking ? 'THINKING' : 'CLAW',
+                _listening
+                    ? 'LISTENING'
+                    : _thinking
+                    ? 'THINKING'
+                    : 'CLAW',
                 style: TextStyle(
-                  color: _listening ? PocketClawTheme.purple : PocketClawTheme.cyan,
+                  color: _listening
+                      ? PocketClawTheme.purple
+                      : PocketClawTheme.cyan,
                   fontWeight: FontWeight.w900,
                   fontSize: 11,
                 ),
@@ -279,8 +293,8 @@ class _ClawBubbleState extends State<_ClawBubble> {
                 _listening
                     ? _statusText
                     : _thinking
-                        ? 'Claw is thinking offline...'
-                        : _responseSpeechText ?? 'Speak your command...',
+                    ? 'Claw is thinking offline...'
+                    : _responseSpeechText ?? 'Speak your command...',
                 style: const TextStyle(
                   color: PocketClawTheme.text,
                   fontSize: 10,
@@ -296,7 +310,7 @@ class _ClawBubbleState extends State<_ClawBubble> {
         ] else if (_thinking) ...[
           const SizedBox(height: 4),
           const LinearProgressIndicator(color: PocketClawTheme.cyan),
-        ]
+        ],
       ],
     );
   }
@@ -493,6 +507,10 @@ Future<void> main() async {
   await ContextEngine.instance.init();
   await SkillStore.instance.init();
   await SkillEngine.instance.init();
+  await WorkflowStore.instance.init();
+  await WorkflowEngine.instance.init();
+  await TaskStore.instance.init();
+  await BackgroundTaskEngine.instance.init();
   // Returning users: kick off install + load in background. Onboarding
   // handles first-time users directly so this is a no-op for them.
   if (PrefsService.instance.isOnboarded) {

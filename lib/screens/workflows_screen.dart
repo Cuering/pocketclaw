@@ -200,84 +200,86 @@ class _WorkflowsScreenState extends State<WorkflowsScreen> {
                 builder: (context, box, _) {
                   final workflows = WorkflowEngine.instance.list();
                   if (workflows.isEmpty) {
-            return Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    Icons.account_tree_outlined,
-                    color: PocketClawTheme.muted,
-                    size: 48,
-                  ),
-                  const SizedBox(height: 12),
-                  Text('No workflows yet', style: theme.textTheme.bodyMedium),
-                  const SizedBox(height: 8),
-                  FilledButton(
-                    onPressed: _showCreateDialog,
-                    child: const Text('Create a Workflow'),
-                  ),
-                ],
-              ),
-            );
-          }
-          return ListView.builder(
-            padding: const EdgeInsets.all(12),
-            itemCount: workflows.length,
-            itemBuilder: (context, i) {
-              final workflow = workflows[i];
-              final isRunning = _runningId == workflow.id;
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: GestureDetector(
-                  onLongPress: () => _deleteWorkflow(workflow),
-                  child: Container(
-                    decoration: PocketClawTheme.panel(),
-                    padding: const EdgeInsets.all(14),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                workflow.name,
-                                style: theme.textTheme.titleMedium,
-                              ),
-                              if (workflow.description.isNotEmpty) ...[
-                                const SizedBox(height: 4),
-                                Text(
-                                  workflow.description,
-                                  style: theme.textTheme.bodyLarge,
+                    return Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.account_tree_outlined,
+                            color: PocketClawTheme.muted,
+                            size: 48,
+                          ),
+                          const SizedBox(height: 12),
+                          Text('No workflows yet', style: theme.textTheme.bodyMedium),
+                          const SizedBox(height: 8),
+                          FilledButton(
+                            onPressed: _showCreateDialog,
+                            child: const Text('Create a Workflow'),
+                          ),
+                        ],
+                      ),
+                    );
+                  }
+                  return ListView.builder(
+                    padding: const EdgeInsets.all(12),
+                    itemCount: workflows.length,
+                    itemBuilder: (context, i) {
+                      final workflow = workflows[i];
+                      final isRunning = _runningId == workflow.id;
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: GestureDetector(
+                          onLongPress: () => _deleteWorkflow(workflow),
+                          child: Container(
+                            decoration: PocketClawTheme.panel(),
+                            padding: const EdgeInsets.all(14),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        workflow.name,
+                                        style: theme.textTheme.titleMedium,
+                                      ),
+                                      if (workflow.description.isNotEmpty) ...[
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          workflow.description,
+                                          style: theme.textTheme.bodyLarge,
+                                        ),
+                                      ],
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        '${workflow.stepSkillIds.length} skill${workflow.stepSkillIds.length == 1 ? '' : 's'}'
+                                        ' · run ${workflow.runCount}×'
+                                        '${workflow.lastRunAt != null ? ' · last ran ${_formatDate(workflow.lastRunAt!)}' : ''}',
+                                        style: theme.textTheme.labelSmall,
+                                      ),
+                                    ],
+                                  ),
                                 ),
+                                const SizedBox(width: 12),
+                                isRunning
+                                    ? const SizedBox(
+                                        width: 24,
+                                        height: 24,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                        ),
+                                      )
+                                    : FilledButton(
+                                        onPressed: () => _runWorkflow(workflow),
+                                        child: const Text('Run'),
+                                      ),
                               ],
-                              const SizedBox(height: 4),
-                              Text(
-                                '${workflow.stepSkillIds.length} skill${workflow.stepSkillIds.length == 1 ? '' : 's'}'
-                                ' · run ${workflow.runCount}×'
-                                '${workflow.lastRunAt != null ? ' · last ran ${_formatDate(workflow.lastRunAt!)}' : ''}',
-                                style: theme.textTheme.labelSmall,
-                              ),
-                            ],
+                            ),
                           ),
                         ),
-                        const SizedBox(width: 12),
-                        isRunning
-                            ? const SizedBox(
-                                width: 24,
-                                height: 24,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                ),
-                              )
-                            : FilledButton(
-                                onPressed: () => _runWorkflow(workflow),
-                                child: const Text('Run'),
-                              ),
-                      ],
-                    ),
-                  ),
-                ),
-              );
+                      );
+                    },
+                  );
                 },
               ),
             ),
