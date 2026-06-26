@@ -16,26 +16,6 @@ class ChatCommandService {
     final trimmed = text.trim();
     if (trimmed.isEmpty) return null;
 
-    // 0. Skill execution: "run skill X" / "execute skill X" / "use skill X" / "launch skill X"
-    final runMatch = RegExp(
-      r'^(?:run|execute|use|launch) skill\s+(.+)$',
-      caseSensitive: false,
-    ).firstMatch(trimmed);
-    if (runMatch != null) {
-      final skillName = runMatch.group(1)!.trim();
-      return await _runSkillByName(skillName);
-    }
-
-    // 0b. Skill generation: "create skill: X" / "make skill: X" / "new skill: X"
-    final createMatch = RegExp(
-      r'^(?:create skill|make skill|new skill)[:\s]+(.+)$',
-      caseSensitive: false,
-    ).firstMatch(trimmed);
-    if (createMatch != null) {
-      final description = createMatch.group(1)!.trim();
-      return await _createSkillFromCommand(description);
-    }
-
     // 0a. Workflow execution: "run workflow X" / "execute workflow X" / "launch workflow X"
     final runWfMatch = RegExp(
       r'^(?:run|execute|launch) workflow\s+(.+)$',
@@ -46,7 +26,7 @@ class ChatCommandService {
       return await _runWorkflowByName(name);
     }
 
-    // 0c. Workflow generation: "create workflow: X" / "new workflow: X"
+    // 0b. Workflow generation: "create workflow: X" / "new workflow: X"
     final createWfMatch = RegExp(
       r'^(?:create workflow|new workflow)[:\s]+(.+)$',
       caseSensitive: false,
@@ -54,6 +34,26 @@ class ChatCommandService {
     if (createWfMatch != null) {
       final description = createWfMatch.group(1)!.trim();
       return await _createWorkflowFromCommand(description);
+    }
+
+    // 0c. Skill execution: "run skill X" / "execute skill X" / "use skill X" / "launch skill X"
+    final runMatch = RegExp(
+      r'^(?:run|execute|use|launch) skill\s+(.+)$',
+      caseSensitive: false,
+    ).firstMatch(trimmed);
+    if (runMatch != null) {
+      final skillName = runMatch.group(1)!.trim();
+      return await _runSkillByName(skillName);
+    }
+
+    // 0d. Skill generation: "create skill: X" / "make skill: X" / "new skill: X"
+    final createMatch = RegExp(
+      r'^(?:create skill|make skill|new skill)[:\s]+(.+)$',
+      caseSensitive: false,
+    ).firstMatch(trimmed);
+    if (createMatch != null) {
+      final description = createMatch.group(1)!.trim();
+      return await _createSkillFromCommand(description);
     }
 
     // 1. Try fast-path regex matches first for instantaneous speed
