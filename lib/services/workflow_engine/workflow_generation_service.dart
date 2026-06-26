@@ -5,7 +5,6 @@ import 'package:flutter/foundation.dart';
 import '../gemma_service.dart';
 import '../skill_engine/skill_store.dart';
 import 'workflow_model.dart';
-import 'workflow_store.dart';
 
 class WorkflowGenerationService {
   WorkflowGenerationService._();

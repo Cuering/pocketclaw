@@ -25,7 +25,7 @@ class BackgroundTaskEngine with WidgetsBindingObserver {
     if (_initialized) return;
     _initialized = true;
     WidgetsBinding.instance.addObserver(this);
-    _resumePendingTasks();
+    await _resumePendingTasks();
     debugPrint('🐾 TASK ENGINE: initialized');
   }
 
@@ -43,7 +43,7 @@ class BackgroundTaskEngine with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       debugPrint('🐾 TASK ENGINE: app resumed — checking pending tasks');
-      _resumePendingTasks();
+      _resumePendingTasks(); // fire-and-forget
     }
   }
 
@@ -117,7 +117,7 @@ class BackgroundTaskEngine with WidgetsBindingObserver {
   List<BackgroundTask> pending() =>
       TaskStore.instance.getByStatus(TaskStatus.pending);
 
-  void _resumePendingTasks() {
+  Future<void> _resumePendingTasks() async {
     final tasks = TaskStore.instance.getByStatus(TaskStatus.pending);
     final now = DateTime.now();
     for (final task in tasks) {
@@ -126,7 +126,7 @@ class BackgroundTaskEngine with WidgetsBindingObserver {
       if (runAt == null || !runAt.isAfter(now)) {
         // Overdue — run immediately
         debugPrint('🐾 TASK ENGINE: resuming overdue task ${task.id}');
-        _runTask(task);
+        await _runTask(task);
       } else {
         final delay = runAt.difference(now);
         _timers[task.id] = Timer(delay, () async {
