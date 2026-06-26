@@ -44,8 +44,7 @@ void main() {
     });
 
     test('returns false when channel throws PlatformException', () async {
-      _mockChannel((_) async =>
-          throw PlatformException(code: 'UNAVAILABLE'));
+      _mockChannel((_) async => throw PlatformException(code: 'UNAVAILABLE'));
       expect(await PrimitiveEngine.instance.isAccessibilityEnabled(), isFalse);
     });
   });
@@ -55,7 +54,10 @@ void main() {
       final steps = PrimitiveEngine.fromJson({
         'steps': [
           {'primitive': 'back'},
-          {'primitive': 'type', 'args': {'text': 'hi'}},
+          {
+            'primitive': 'type',
+            'args': {'text': 'hi'},
+          },
         ],
       });
       expect(steps, hasLength(2));
@@ -199,7 +201,11 @@ void main() {
       _mockChannel((call) async {
         if (call.method == 'isEnabled') return true;
         if (call.method == 'takeScreenshot') {
-          return {'ok': true, 'message': 'done', 'path': '/data/cache/shot.png'};
+          return {
+            'ok': true,
+            'message': 'done',
+            'path': '/data/cache/shot.png',
+          };
         }
         return {'ok': true, 'message': 'done'};
       });
@@ -282,17 +288,22 @@ void main() {
       expect(result.stepResults[0].message, 'crash');
     });
 
-    test('returns timeout result when step exceeds 5s', () async {
-      _mockChannel((call) async {
-        if (call.method == 'isEnabled') return true;
-        await Future.delayed(const Duration(seconds: 6));
-        return {'ok': true, 'message': 'done'};
-      });
-      final result = await PrimitiveEngine.instance
-          .execute([const PrimitiveStep(primitive: 'back')]);
-      expect(result.ok, isFalse);
-      expect(result.stepResults[0].message, 'timeout');
-    }, timeout: const Timeout(Duration(seconds: 10)));
+    test(
+      'returns timeout result when step exceeds 5s',
+      () async {
+        _mockChannel((call) async {
+          if (call.method == 'isEnabled') return true;
+          await Future.delayed(const Duration(seconds: 6));
+          return {'ok': true, 'message': 'done'};
+        });
+        final result = await PrimitiveEngine.instance.execute([
+          const PrimitiveStep(primitive: 'back'),
+        ]);
+        expect(result.ok, isFalse);
+        expect(result.stepResults[0].message, 'timeout');
+      },
+      timeout: const Timeout(Duration(seconds: 10)),
+    );
   });
 
   group('execute() — already running guard', () {

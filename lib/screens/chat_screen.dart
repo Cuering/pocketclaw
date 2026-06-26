@@ -1599,10 +1599,10 @@ class _EmptyState extends StatelessWidget {
 //     required this.enabled,
 //     required this.onChanged,
 //   });
-// 
+//
 //   final bool enabled;
 //   final ValueChanged<bool> onChanged;
-// 
+//
 //   @override
 //   Widget build(BuildContext context) {
 //     final theme = Theme.of(context);

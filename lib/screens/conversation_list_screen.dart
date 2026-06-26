@@ -19,8 +19,7 @@ class ConversationListScreen extends StatefulWidget {
   final String currentConversationId;
 
   @override
-  State<ConversationListScreen> createState() =>
-      _ConversationListScreenState();
+  State<ConversationListScreen> createState() => _ConversationListScreenState();
 }
 
 class _ConversationListScreenState extends State<ConversationListScreen> {
@@ -78,9 +77,7 @@ class _ConversationListScreenState extends State<ConversationListScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Conversations'),
-      ),
+      appBar: AppBar(title: const Text('Conversations')),
       body: Column(
         children: [
           ListTile(

@@ -13,9 +13,9 @@ import 'gemma_service.dart';
 
 /// Lifecycle of the RAG subsystem.
 enum RagState {
-  notReady,   // vector store not initialized yet (waiting for init)
-  ready,      // vector store open, embedder available
-  indexing,   // currently chunking + embedding a document
+  notReady, // vector store not initialized yet (waiting for init)
+  ready, // vector store open, embedder available
+  indexing, // currently chunking + embedding a document
   retrieving, // currently embedding a query and searching
   error,
 }
@@ -272,12 +272,14 @@ class RagService {
         try {
           final meta = jsonDecode(r.metadata ?? '{}') as Map<String, dynamic>;
           if (meta['conversation_id'] != conversationId) continue;
-          results.add(RetrievedChunk(
-            content: r.content,
-            docName: meta['doc_name'] as String? ?? 'document',
-            chunkIndex: meta['chunk_index'] as int? ?? 0,
-            similarity: r.similarity,
-          ));
+          results.add(
+            RetrievedChunk(
+              content: r.content,
+              docName: meta['doc_name'] as String? ?? 'document',
+              chunkIndex: meta['chunk_index'] as int? ?? 0,
+              similarity: r.similarity,
+            ),
+          );
           if (results.length >= topK) break;
         } catch (e) {
           debugPrint('🐾 RAG: skipping malformed result: $e');
@@ -311,7 +313,9 @@ class RagService {
     int perDocLimit = 3,
   }) async {
     if (!_initialized) return const [];
-    final docs = await DocumentStore.instance.loadForConversation(conversationId);
+    final docs = await DocumentStore.instance.loadForConversation(
+      conversationId,
+    );
     if (docs.isEmpty) return const [];
 
     final results = <RetrievedChunk>[];
@@ -329,12 +333,14 @@ class RagService {
             final meta = jsonDecode(r.metadata ?? '{}') as Map<String, dynamic>;
             if (meta['conversation_id'] != conversationId) continue;
             if (meta['doc_id'] != doc.id) continue;
-            results.add(RetrievedChunk(
-              content: r.content,
-              docName: meta['doc_name'] as String? ?? doc.name,
-              chunkIndex: meta['chunk_index'] as int? ?? 0,
-              similarity: r.similarity,
-            ));
+            results.add(
+              RetrievedChunk(
+                content: r.content,
+                docName: meta['doc_name'] as String? ?? doc.name,
+                chunkIndex: meta['chunk_index'] as int? ?? 0,
+                similarity: r.similarity,
+              ),
+            );
             picked++;
           } catch (_) {}
         }
@@ -342,7 +348,9 @@ class RagService {
         debugPrint('🐾 RAG: getDocStarts failed for ${doc.name}: $e');
       }
     }
-    debugPrint('🐾 RAG: fallback returned ${results.length} chunks across ${docs.length} docs');
+    debugPrint(
+      '🐾 RAG: fallback returned ${results.length} chunks across ${docs.length} docs',
+    );
     return results;
   }
 
@@ -356,8 +364,10 @@ class RagService {
   /// cleanup once the facade exposes removeDocument.
   Future<void> deleteDocument(Document doc) async {
     await DocumentStore.instance.delete(doc.id);
-    debugPrint('🐾 RAG: deleted document record for ${doc.name} '
-        '(${doc.chunkCount} chunks remain in vector store as orphans)');
+    debugPrint(
+      '🐾 RAG: deleted document record for ${doc.name} '
+      '(${doc.chunkCount} chunks remain in vector store as orphans)',
+    );
   }
 }
 

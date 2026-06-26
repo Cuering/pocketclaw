@@ -88,7 +88,7 @@ class OverlayControllerService {
     //   // Send collapse command to the overlay isolate so it shrinks before closing
     //   final port = IsolateNameServer.lookupPortByName('pocketclaw_overlay_port');
     //   port?.send({'command': 'collapse'});
-    //   
+    //
     //   if (await FlutterOverlayWindow.isActive()) {
     //     await FlutterOverlayWindow.closeOverlay();
     //   }

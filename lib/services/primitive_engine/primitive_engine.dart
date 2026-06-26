@@ -9,8 +9,9 @@ class PrimitiveEngine {
 
   static const _channel = MethodChannel('pocketclaw/accessibility');
 
-  final ValueNotifier<PrimitiveState> _state =
-      ValueNotifier(PrimitiveState.idle);
+  final ValueNotifier<PrimitiveState> _state = ValueNotifier(
+    PrimitiveState.idle,
+  );
   ValueListenable<PrimitiveState> get state => _state;
 
   PrimitiveExecutionResult? _lastResult;
@@ -19,7 +20,10 @@ class PrimitiveEngine {
   static List<PrimitiveStep> fromJson(Map<String, dynamic> json) {
     final raw = json['steps'] as List<dynamic>?;
     if (raw == null) throw ArgumentError("Missing 'steps' array");
-    return raw.cast<Map<String, dynamic>>().map(PrimitiveStep.fromJson).toList();
+    return raw
+        .cast<Map<String, dynamic>>()
+        .map(PrimitiveStep.fromJson)
+        .toList();
   }
 
   Future<bool> isAccessibilityEnabled() async {

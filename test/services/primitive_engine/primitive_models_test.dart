@@ -183,10 +183,7 @@ void main() {
     test('ok: true when all steps succeeded', () {
       const result = PrimitiveExecutionResult(
         ok: true,
-        stepResults: [
-          PrimitiveResult(ok: true),
-          PrimitiveResult(ok: true),
-        ],
+        stepResults: [PrimitiveResult(ok: true), PrimitiveResult(ok: true)],
       );
       expect(result.ok, isTrue);
       expect(result.failedAtStep, isNull);

@@ -22,8 +22,11 @@ class ChatCommandService {
 
     // 2. Fall back to local Gemma semantic JSON extraction
     try {
-      debugPrint('🐾 COMMANDS: running local Gemma semantic parser for: "$trimmed"');
-      final prompt = '''
+      debugPrint(
+        '🐾 COMMANDS: running local Gemma semantic parser for: "$trimmed"',
+      );
+      final prompt =
+          '''
 You are a hardware command extractor. Map the user's request to a JSON function call.
 If it matches none of these, output {"action": "none"}.
 
@@ -43,13 +46,13 @@ Output EXACTLY the JSON object and absolutely nothing else. No markdown wraps, n
 ''';
 
       final response = await GemmaService.instance.generate(prompt);
-      
+
       // Clean possible markdown formatting
       final cleanJson = response
           .replaceAll('```json', '')
           .replaceAll('```', '')
           .trim();
-      
+
       final parsed = jsonDecode(cleanJson) as Map<String, dynamic>;
       final action = parsed['action'] as String?;
       final args = parsed['args'] as Map<String, dynamic>? ?? {};
@@ -72,13 +75,20 @@ Output EXACTLY the JSON object and absolutely nothing else. No markdown wraps, n
       } else if (action == 'openCalendar') {
         final title = args['title'] as String? ?? 'PocketClaw reminder';
         final notes = args['notes'] as String? ?? '';
-        final res = await DeviceActionsService.instance.openCalendar(title: title, notes: notes);
+        final res = await DeviceActionsService.instance.openCalendar(
+          title: title,
+          notes: notes,
+        );
         return '📅 ${res.message}';
       } else if (action == 'openAlarm') {
         final label = args['label'] as String? ?? 'PocketClaw alarm';
         final hour = args['hour'] as int?;
         final minute = args['minute'] as int?;
-        final res = await DeviceActionsService.instance.openAlarm(label: label, hour: hour, minute: minute);
+        final res = await DeviceActionsService.instance.openAlarm(
+          label: label,
+          hour: hour,
+          minute: minute,
+        );
         return '⏰ ${res.message}';
       } else if (action == 'openLocationSettings') {
         final res = await DeviceActionsService.instance.openLocationSettings();
@@ -92,17 +102,22 @@ Output EXACTLY the JSON object and absolutely nothing else. No markdown wraps, n
         final body = args['body'] as String? ?? '';
 
         // Check & request notification permission dynamically!
-        final permissions = await DeviceActionsService.instance.checkAppPermissions();
+        final permissions = await DeviceActionsService.instance
+            .checkAppPermissions();
         if (permissions['notifications'] != true) {
           await DeviceActionsService.instance.requestNotificationPermission();
           await Future<void>.delayed(const Duration(milliseconds: 600));
-          final recheck = await DeviceActionsService.instance.checkAppPermissions();
+          final recheck = await DeviceActionsService.instance
+              .checkAppPermissions();
           if (recheck['notifications'] != true) {
             return '🔔 Notification blocked. Please enable notifications to receive this alert.';
           }
         }
 
-        final res = await DeviceActionsService.instance.sendNotification(title, body);
+        final res = await DeviceActionsService.instance.sendNotification(
+          title,
+          body,
+        );
         return '🔔 ${res.message}';
       }
     } catch (e) {

@@ -46,8 +46,7 @@ class DeviceActionsService {
   Future<DeviceActionResult> setWakeLock(bool enabled) =>
       _invoke('setWakeLock', {'enabled': enabled});
 
-  Future<DeviceActionResult> openAppSettings() =>
-      _invoke('openAppSettings');
+  Future<DeviceActionResult> openAppSettings() => _invoke('openAppSettings');
 
   Future<DeviceActionResult> sendNotification(String title, String body) =>
       _invoke('sendNotification', {'title': title, 'body': body});
@@ -60,7 +59,9 @@ class DeviceActionsService {
 
   Future<Map<String, bool>> checkAppPermissions() async {
     try {
-      final raw = await _channel.invokeMapMethod<String, Object?>('checkAppPermissions');
+      final raw = await _channel.invokeMapMethod<String, Object?>(
+        'checkAppPermissions',
+      );
       return {
         'mic': raw?['mic'] == true,
         'camera': raw?['camera'] == true,

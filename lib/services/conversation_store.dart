@@ -27,9 +27,7 @@ class ConversationStore {
     if (_box != null) return;
     await Hive.initFlutter();
     _box = await Hive.openBox<String>(_boxName);
-    debugPrint(
-      '🐾 STORE: opened box with ${_box!.length} conversations',
-    );
+    debugPrint('🐾 STORE: opened box with ${_box!.length} conversations');
   }
 
   Box<String> get _requireBox {

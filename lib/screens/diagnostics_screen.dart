@@ -238,7 +238,6 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen>
     });
   }
 
-
   // Helper to update _response inside setState. setState is what tells
   // Flutter "this widget changed, rebuild it." Without setState, the UI
   // wouldn't refresh even if _response changed.

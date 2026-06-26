@@ -43,7 +43,8 @@ class ChatInput extends StatefulWidget {
   State<ChatInput> createState() => _ChatInputState();
 }
 
-class _ChatInputState extends State<ChatInput> with SingleTickerProviderStateMixin {
+class _ChatInputState extends State<ChatInput>
+    with SingleTickerProviderStateMixin {
   final _controller = TextEditingController();
   final _focusNode = FocusNode();
   final SpeechToText _speechToText = SpeechToText();
@@ -56,12 +57,13 @@ class _ChatInputState extends State<ChatInput> with SingleTickerProviderStateMix
   void initState() {
     super.initState();
     _controller.addListener(_onTextChanged);
-    _pulseController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 700),
-    )..addListener(() {
-        if (mounted) setState(() {});
-      });
+    _pulseController =
+        AnimationController(
+          vsync: this,
+          duration: const Duration(milliseconds: 700),
+        )..addListener(() {
+          if (mounted) setState(() {});
+        });
     _initSpeech();
   }
 
@@ -229,8 +231,8 @@ class _ChatInputState extends State<ChatInput> with SingleTickerProviderStateMix
                         hintText: _isListening
                             ? 'Listening... Speak now!'
                             : widget.enabled
-                                ? 'Ask Claw anything…'
-                                : widget.disabledHint ?? 'Claw is thinking…',
+                            ? 'Ask Claw anything…'
+                            : widget.disabledHint ?? 'Claw is thinking…',
                         contentPadding: const EdgeInsets.symmetric(
                           horizontal: 14,
                           vertical: 10,
@@ -245,11 +247,16 @@ class _ChatInputState extends State<ChatInput> with SingleTickerProviderStateMix
                         if (!widget.enabled) return;
                         _isPressed = true;
                         // 1. Dynamic mic permission check & request
-                        final permissions = await DeviceActionsService.instance.checkAppPermissions();
+                        final permissions = await DeviceActionsService.instance
+                            .checkAppPermissions();
                         if (permissions['mic'] != true) {
-                          await DeviceActionsService.instance.requestAppPermissions();
-                          await Future<void>.delayed(const Duration(milliseconds: 600));
-                          final recheck = await DeviceActionsService.instance.checkAppPermissions();
+                          await DeviceActionsService.instance
+                              .requestAppPermissions();
+                          await Future<void>.delayed(
+                            const Duration(milliseconds: 600),
+                          );
+                          final recheck = await DeviceActionsService.instance
+                              .checkAppPermissions();
                           if (recheck['mic'] != true) {
                             _isPressed = false;
                             return; // User did not grant permission
@@ -271,7 +278,9 @@ class _ChatInputState extends State<ChatInput> with SingleTickerProviderStateMix
                         if (_isListening) {
                           await _stopListening();
                           // Wait briefly for last recognized chunk to settle in text field
-                          await Future<void>.delayed(const Duration(milliseconds: 400));
+                          await Future<void>.delayed(
+                            const Duration(milliseconds: 400),
+                          );
                           if (_controller.text.trim().isNotEmpty) {
                             _handleSend();
                           }

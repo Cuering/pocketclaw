@@ -26,9 +26,7 @@ class DocumentStore {
   Future<void> init() async {
     if (_box != null) return;
     _box = await Hive.openBox<String>(_boxName);
-    debugPrint(
-      '🐾 DOCSTORE: opened box with ${_box!.length} documents',
-    );
+    debugPrint('🐾 DOCSTORE: opened box with ${_box!.length} documents');
   }
 
   Box<String> get _requireBox {

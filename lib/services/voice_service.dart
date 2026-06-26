@@ -67,13 +67,17 @@ class VoiceService {
   /// Toggle continuous wake-word listening based on user settings
   Future<void> syncContinuousState() async {
     final prefs = PrefsService.instance.current;
-    final isResumed = WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
-    final shouldBeActive = prefs.overlayEnabled && prefs.continuousListening && !isResumed;
+    final isResumed =
+        WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
+    final shouldBeActive =
+        prefs.overlayEnabled && prefs.continuousListening && !isResumed;
 
     if (shouldBeActive == _continuousActive) return;
     _continuousActive = shouldBeActive;
 
-    debugPrint('🐾 VOICE SERVICE: syncing state, active=$_continuousActive, wasResumed=$isResumed');
+    debugPrint(
+      '🐾 VOICE SERVICE: syncing state, active=$_continuousActive, wasResumed=$isResumed',
+    );
 
     if (_continuousActive) {
       // Toggle WakeLock natively so CPU stays awake
@@ -116,7 +120,8 @@ class VoiceService {
   void _handleSttStopped() {
     if (!_continuousActive) return;
     // Auto-restart loop if continuous is enabled and we are not thinking/speaking
-    if (_state == VoiceState.checkingWakeWord || _state == VoiceState.listeningCommand) {
+    if (_state == VoiceState.checkingWakeWord ||
+        _state == VoiceState.listeningCommand) {
       Future.delayed(const Duration(milliseconds: 300), _startListeningLoop);
     }
   }
@@ -169,7 +174,8 @@ class VoiceService {
       debugPrint('🐾 VOICE SERVICE: processing command: "$commandText"');
 
       // 1. Parse via Gemma Offline Function Extraction
-      final executionReport = await ChatCommandService.instance.tryHandleWithGemma(commandText);
+      final executionReport = await ChatCommandService.instance
+          .tryHandleWithGemma(commandText);
 
       String reply;
       if (executionReport != null) {
@@ -177,9 +183,10 @@ class VoiceService {
       } else {
         // Fall back to normal Gemma dialogue
         final now = DateTime.now();
-        final localContext = 'Today is ${now.day}/${now.month}/${now.year}. Standard time: ${now.hour}:${now.minute}. '
+        final localContext =
+            'Today is ${now.day}/${now.month}/${now.year}. Standard time: ${now.hour}:${now.minute}. '
             'The user asked you a voice command outside the app. Give a brief, direct answer (under 2 sentences) suitable for a voice readout.';
-        
+
         reply = await GemmaService.instance.generate(
           '$localContext\n\nUser request: "$commandText"',
           userName: PrefsService.instance.current.name,
@@ -197,13 +204,16 @@ class VoiceService {
       // 4. Leave visible for 5 seconds before returning to idle
       await Future<void>.delayed(const Duration(seconds: 5));
       _sendToOverlay({'command': 'done'});
-      
+
       _state = VoiceState.checkingWakeWord;
       _notify();
       _handleSttStopped();
     } catch (e, stack) {
       debugPrint('🐾 VOICE SERVICE: process failed: $e\n$stack');
-      _sendToOverlay({'command': 'response', 'text': 'Sorry, something went wrong offline.'});
+      _sendToOverlay({
+        'command': 'response',
+        'text': 'Sorry, something went wrong offline.',
+      });
       await Future<void>.delayed(const Duration(seconds: 4));
       _sendToOverlay({'command': 'done'});
       _state = VoiceState.checkingWakeWord;
@@ -222,21 +232,19 @@ class VoiceService {
         target = Conversation(title: 'Voice Session');
       }
 
-      target.messages.add(Message(
-        role: MessageRole.user,
-        text: userText,
-      ));
-      target.messages.add(Message(
-        role: MessageRole.assistant,
-        text: assistantText,
-      ));
+      target.messages.add(Message(role: MessageRole.user, text: userText));
+      target.messages.add(
+        Message(role: MessageRole.assistant, text: assistantText),
+      );
 
       if (target.title == 'New chat') {
         target.title = target.deriveTitleFromMessages();
       }
 
       await ConversationStore.instance.save(target);
-      debugPrint('🐾 VOICE SERVICE: Persisted overlay voice interaction in Hive chat "${target.title}"');
+      debugPrint(
+        '🐾 VOICE SERVICE: Persisted overlay voice interaction in Hive chat "${target.title}"',
+      );
     } catch (e) {
       debugPrint('🐾 VOICE SERVICE: failed to save turn to Hive: $e');
     }
@@ -247,7 +255,9 @@ class VoiceService {
     if (port != null) {
       port.send({...event, 'ts': DateTime.now().millisecondsSinceEpoch});
     } else {
-      debugPrint('🐾 VOICE SERVICE: overlay port not found (overlay not active)');
+      debugPrint(
+        '🐾 VOICE SERVICE: overlay port not found (overlay not active)',
+      );
     }
   }
 
@@ -262,12 +272,12 @@ class VoiceService {
       await Future<void>.delayed(const Duration(milliseconds: 300));
       _state = VoiceState.listeningCommand;
       _notify();
-      
+
       final prefs = PrefsService.instance.current;
       if (prefs.keepScreenAwake) {
         await DeviceActionsService.instance.setWakeLock(true);
       }
-      
+
       await _startListeningLoop();
     } catch (e) {
       debugPrint('🐾 VOICE SERVICE: manual trigger failed: $e');

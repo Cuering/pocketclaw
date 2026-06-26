@@ -13,8 +13,8 @@ class Document {
     required this.conversationId,
     required this.chunkCount,
     DateTime? createdAt,
-  })  : id = id ?? const Uuid().v4(),
-        createdAt = createdAt ?? DateTime.now();
+  }) : id = id ?? const Uuid().v4(),
+       createdAt = createdAt ?? DateTime.now();
 
   final String id;
   final String name; // e.g. 'lease_agreement.txt'
@@ -23,18 +23,18 @@ class Document {
   final DateTime createdAt;
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'name': name,
-        'conversationId': conversationId,
-        'chunkCount': chunkCount,
-        'createdAt': createdAt.toIso8601String(),
-      };
+    'id': id,
+    'name': name,
+    'conversationId': conversationId,
+    'chunkCount': chunkCount,
+    'createdAt': createdAt.toIso8601String(),
+  };
 
   factory Document.fromJson(Map<String, dynamic> json) => Document(
-        id: json['id'] as String?,
-        name: json['name'] as String? ?? 'unnamed',
-        conversationId: json['conversationId'] as String? ?? '',
-        chunkCount: json['chunkCount'] as int? ?? 0,
-        createdAt: DateTime.tryParse(json['createdAt'] as String? ?? ''),
-      );
+    id: json['id'] as String?,
+    name: json['name'] as String? ?? 'unnamed',
+    conversationId: json['conversationId'] as String? ?? '',
+    chunkCount: json['chunkCount'] as int? ?? 0,
+    createdAt: DateTime.tryParse(json['createdAt'] as String? ?? ''),
+  );
 }

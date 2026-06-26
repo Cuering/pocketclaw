@@ -84,7 +84,9 @@ class PrefsService {
   Future<void> update(UserPrefs prefs) async {
     _cached = prefs;
     await _box!.put(_key, jsonEncode(prefs.toJson()));
-    debugPrint('🐾 PREFS: saved (onboardingCompleted=${prefs.onboardingCompleted})');
+    debugPrint(
+      '🐾 PREFS: saved (onboardingCompleted=${prefs.onboardingCompleted})',
+    );
     // Trigger voice background listening check dynamically
     // ignore: discarded_futures
     // VoiceService.instance.syncContinuousState();
