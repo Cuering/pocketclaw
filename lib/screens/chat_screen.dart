@@ -28,6 +28,7 @@ import '../widgets/message_bubble.dart';
 import 'conversation_list_screen.dart';
 import 'skills_screen.dart';
 import 'workflows_screen.dart';
+import '../services/marketplace/marketplace_service.dart';
 
 const String kMainPortName = 'pocketclaw_main_port';
 
@@ -1299,6 +1300,38 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     }
   }
 
+  Future<void> _importSkillBundle() async {
+    try {
+      final result = await MarketplaceService.instance.importFromFile();
+      if (!mounted) return;
+      if (result == null) return; // cancelled
+      final msg = StringBuffer(
+        'Added ${result.skillsAdded} skill'
+        '${result.skillsAdded == 1 ? '' : 's'}',
+      );
+      if (result.workflowsAdded > 0) {
+        msg.write(', ${result.workflowsAdded} workflow'
+            '${result.workflowsAdded == 1 ? '' : 's'}');
+      }
+      if (result.warnings.isNotEmpty) {
+        msg.write(' (${result.warnings.length} warning'
+            '${result.warnings.length == 1 ? '' : 's'})');
+      }
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(msg.toString())));
+    } on FormatException {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Not a valid .pcskill file')),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Couldn't import that file.")),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -1318,7 +1351,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           //   tooltip: 'Claw Settings',
           // ),
           PopupMenuButton<String>(
-            onSelected: (value) {
+            onSelected: (value) async {
               if (value == 'clear') {
                 setState(() {
                   _conversation = Conversation();
@@ -1337,12 +1370,15 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                     builder: (_) => const WorkflowsScreen(),
                   ),
                 );
+              } else if (value == 'import_skill') {
+                await _importSkillBundle();
               }
             },
             itemBuilder: (_) => const [
               PopupMenuItem(value: 'clear', child: Text('New chat')),
               PopupMenuItem(value: 'skills', child: Text('Skills')),
               PopupMenuItem(value: 'workflows', child: Text('Workflows')),
+              PopupMenuItem(value: 'import_skill', child: Text('Import skill…')),
             ],
           ),
         ],

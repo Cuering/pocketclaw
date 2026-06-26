@@ -52,7 +52,8 @@ class MarketplaceService {
       exportedAtIso: DateTime.now().toUtc().toIso8601String(),
     );
     final safe = suggestedName.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '_');
-    final fileName = '$safe.pcskill';
+    final base = safe.isEmpty ? 'bundle' : safe;
+    final fileName = '$base.pcskill';
 
     final dir = await getTemporaryDirectory();
     final path = '${dir.path}/$fileName';

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
 import '../core/pocketclaw_theme.dart';
+import '../services/marketplace/marketplace_service.dart';
 import '../services/skill_engine/skill_engine.dart';
 import '../services/skill_engine/skill_model.dart';
 import '../services/skill_engine/skill_store.dart';
@@ -82,6 +83,13 @@ class _SkillsScreenState extends State<SkillsScreen> {
     await SkillEngine.instance.delete(skill.id);
     if (!mounted) return;
     setState(() {});
+  }
+
+  Future<void> _exportSkill(SkillModel skill) async {
+    await MarketplaceService.instance.exportBundle(
+      skills: [skill],
+      suggestedName: skill.name,
+    );
   }
 
   void _showCreateDialog() {
@@ -180,7 +188,39 @@ class _SkillsScreenState extends State<SkillsScreen> {
               return Padding(
                 padding: const EdgeInsets.only(bottom: 10),
                 child: GestureDetector(
-                  onLongPress: () => _deleteSkill(skill),
+                  onLongPress: () async {
+                    final action = await showModalBottomSheet<String>(
+                      context: context,
+                      backgroundColor: PocketClawTheme.bg2,
+                      builder: (ctx) => SafeArea(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            ListTile(
+                              leading: const Icon(Icons.ios_share,
+                                  color: PocketClawTheme.cyan),
+                              title: Text('Export',
+                                  style: Theme.of(ctx).textTheme.bodyMedium),
+                              onTap: () => Navigator.pop(ctx, 'export'),
+                            ),
+                            ListTile(
+                              leading: const Icon(Icons.delete_outline,
+                                  color: PocketClawTheme.error),
+                              title: Text('Delete',
+                                  style: Theme.of(ctx).textTheme.bodyMedium),
+                              onTap: () => Navigator.pop(ctx, 'delete'),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                    if (!mounted) return;
+                    if (action == 'export') {
+                      await _exportSkill(skill);
+                    } else if (action == 'delete') {
+                      await _deleteSkill(skill);
+                    }
+                  },
                   child: Container(
                     decoration: PocketClawTheme.panel(),
                     padding: const EdgeInsets.all(14),

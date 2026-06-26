@@ -35,6 +35,8 @@ import 'services/workflow_engine/workflow_engine.dart';
 import 'services/workflow_engine/workflow_store.dart';
 import 'services/background_task_engine/background_task_engine.dart';
 import 'services/background_task_engine/task_store.dart';
+import 'services/dynamic_ui/dynamic_ui_service.dart';
+import 'services/marketplace/marketplace_service.dart';
 
 // Shared port name. Must match what listeners register under
 // IsolateNameServer.registerPortWithName(...). The diagnostics screen
@@ -511,6 +513,8 @@ Future<void> main() async {
   await WorkflowEngine.instance.init();
   await TaskStore.instance.init();
   await BackgroundTaskEngine.instance.init();
+  await DynamicUiService.instance.init();
+  await MarketplaceService.instance.init();
   // Returning users: kick off install + load in background. Onboarding
   // handles first-time users directly so this is a no-op for them.
   if (PrefsService.instance.isOnboarded) {

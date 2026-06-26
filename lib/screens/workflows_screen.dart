@@ -3,6 +3,9 @@ import 'package:hive_flutter/hive_flutter.dart';
 
 import '../core/pocketclaw_theme.dart';
 import '../services/background_task_engine/background_task_engine.dart';
+import '../services/marketplace/marketplace_service.dart';
+import '../services/skill_engine/skill_model.dart';
+import '../services/skill_engine/skill_store.dart';
 import '../services/workflow_engine/workflow_engine.dart';
 import '../services/workflow_engine/workflow_model.dart';
 import '../services/workflow_engine/workflow_store.dart';
@@ -105,6 +108,19 @@ class _WorkflowsScreenState extends State<WorkflowsScreen> {
     await WorkflowEngine.instance.delete(workflow.id);
     if (!mounted) return;
     setState(() {});
+  }
+
+  Future<void> _exportWorkflow(WorkflowModel workflow) async {
+    final skills = <SkillModel>[];
+    for (final id in workflow.stepSkillIds) {
+      final s = SkillStore.instance.get(id);
+      if (s != null) skills.add(s);
+    }
+    await MarketplaceService.instance.exportBundle(
+      skills: skills,
+      workflows: [workflow],
+      suggestedName: workflow.name,
+    );
   }
 
   void _showCreateDialog() {
@@ -229,7 +245,39 @@ class _WorkflowsScreenState extends State<WorkflowsScreen> {
                       return Padding(
                         padding: const EdgeInsets.only(bottom: 10),
                         child: GestureDetector(
-                          onLongPress: () => _deleteWorkflow(workflow),
+                          onLongPress: () async {
+                            final action = await showModalBottomSheet<String>(
+                              context: context,
+                              backgroundColor: PocketClawTheme.bg2,
+                              builder: (ctx) => SafeArea(
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    ListTile(
+                                      leading: const Icon(Icons.ios_share,
+                                          color: PocketClawTheme.cyan),
+                                      title: Text('Export',
+                                          style: Theme.of(ctx).textTheme.bodyMedium),
+                                      onTap: () => Navigator.pop(ctx, 'export'),
+                                    ),
+                                    ListTile(
+                                      leading: const Icon(Icons.delete_outline,
+                                          color: PocketClawTheme.error),
+                                      title: Text('Delete',
+                                          style: Theme.of(ctx).textTheme.bodyMedium),
+                                      onTap: () => Navigator.pop(ctx, 'delete'),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                            if (!mounted) return;
+                            if (action == 'export') {
+                              await _exportWorkflow(workflow);
+                            } else if (action == 'delete') {
+                              await _deleteWorkflow(workflow);
+                            }
+                          },
                           child: Container(
                             decoration: PocketClawTheme.panel(),
                             padding: const EdgeInsets.all(14),
