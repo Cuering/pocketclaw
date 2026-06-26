@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'device_actions_service.dart';
 import 'gemma_service.dart';
+import 'skill_engine/skill_engine.dart';
+import 'skill_engine/skill_store.dart';
 
 class ChatCommandService {
   ChatCommandService._();
@@ -12,6 +14,26 @@ class ChatCommandService {
   Future<String?> tryHandleWithGemma(String text) async {
     final trimmed = text.trim();
     if (trimmed.isEmpty) return null;
+
+    // 0. Skill execution: "run skill X" / "execute skill X" / "use skill X" / "launch skill X"
+    final runMatch = RegExp(
+      r'^(?:run|execute|use|launch) skill\s+(.+)$',
+      caseSensitive: false,
+    ).firstMatch(trimmed);
+    if (runMatch != null) {
+      final skillName = runMatch.group(1)!.trim();
+      return await _runSkillByName(skillName);
+    }
+
+    // 0b. Skill generation: "create skill: X" / "make skill: X" / "new skill: X"
+    final createMatch = RegExp(
+      r'^(?:create skill|make skill|new skill)[:\s]+(.+)$',
+      caseSensitive: false,
+    ).firstMatch(trimmed);
+    if (createMatch != null) {
+      final description = createMatch.group(1)!.trim();
+      return await _createSkillFromCommand(description);
+    }
 
     // 1. Try fast-path regex matches first for instantaneous speed
     final fastResult = await tryHandle(trimmed);
@@ -194,5 +216,37 @@ Output EXACTLY the JSON object and absolutely nothing else. No markdown wraps, n
       }
     }
     return result.isEmpty ? 'PocketClaw reminder' : result;
+  }
+
+  Future<String?> _runSkillByName(String nameQuery) async {
+    final skills = SkillEngine.instance.list();
+    if (skills.isEmpty) return 'No skills saved. Say "create skill: [description]" to make one.';
+
+    final lower = nameQuery.toLowerCase();
+    final match = skills.firstWhere(
+      (s) => s.name.toLowerCase().contains(lower),
+      orElse: () => skills.firstWhere(
+        (s) => lower.contains(s.name.toLowerCase()),
+        orElse: () => skills.first, // fallback — will return not-found below
+      ),
+    );
+
+    // Verify we found a real match (not just fallback)
+    final isRealMatch =
+        match.name.toLowerCase().contains(lower) ||
+        lower.contains(match.name.toLowerCase());
+    if (!isRealMatch) {
+      return "No skill named '$nameQuery' found. Available: ${skills.map((s) => s.name).join(', ')}.";
+    }
+
+    return await SkillEngine.instance.execute(match.id);
+  }
+
+  Future<String?> _createSkillFromCommand(String description) async {
+    final skill = await SkillEngine.instance.generate(description);
+    if (skill == null) {
+      return 'Could not generate skill. Try a clearer description.';
+    }
+    return '✅ Skill "${skill.name}" created with ${skill.steps.length} step${skill.steps.length == 1 ? '' : 's'}.';
   }
 }
