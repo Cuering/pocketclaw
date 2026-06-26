@@ -230,6 +230,8 @@ class TaskStore {
 
 Builds a Gemma prompt listing the user's saved skills (name + description) and asks for a workflow as JSON. Validates that every `stepSkillId` exists in `SkillStore`. Returns `null` on any failure — never throws.
 
+**Early exit when no skills exist:** if `SkillStore.instance.getAll()` is empty, return `null` immediately without calling Gemma (an empty skills list makes valid `stepSkillIds` impossible). The caller surfaces this as "Could not generate workflow — create some skills first."
+
 **Prompt template:**
 ```
 You are a workflow generator for PocketClaw, a private on-device Android assistant.
@@ -318,8 +320,16 @@ class BackgroundTaskEngine with WidgetsBindingObserver {
     if (state == AppLifecycleState.resumed) _resumePendingTasks();
   }
 
-  /// Schedule a workflow to run. runAt null = run immediately.
-  /// Returns the created BackgroundTask. Never throws.
+  /// Schedule a workflow to run.
+  ///
+  /// runAt null or in the past: runs immediately, awaits execution, returns
+  /// the completed task (status done or failed, result populated).
+  ///
+  /// runAt in the future: arms a Timer, returns the pending task immediately
+  /// without waiting for execution. The task result is written to TaskStore
+  /// when the Timer fires.
+  ///
+  /// Never throws.
   Future<BackgroundTask> schedule(String workflowId, {DateTime? runAt}) async { ... }
 
   /// Cancel a pending task. No-op if already running/done/failed.
