@@ -10,6 +10,7 @@ import 'device_actions_service.dart';
 import 'chat_command_service.dart';
 import 'gemma_service.dart';
 import 'conversation_store.dart';
+import 'context_engine/context_engine.dart';
 
 enum VoiceState {
   idle,
@@ -173,35 +174,37 @@ class VoiceService {
     try {
       debugPrint('🐾 VOICE SERVICE: processing command: "$commandText"');
 
-      // 1. Parse via Gemma Offline Function Extraction
-      final executionReport = await ChatCommandService.instance
-          .tryHandleWithGemma(commandText);
+      final snapshot = await ContextEngine.instance.capture();
+      final contextPrefix = ContextEngine.instance.formatForPrompt(snapshot);
+
+      final executionReport =
+          await ChatCommandService.instance.tryHandleWithGemma(commandText);
 
       String reply;
       if (executionReport != null) {
         reply = executionReport;
       } else {
-        // Fall back to normal Gemma dialogue
         final now = DateTime.now();
         final localContext =
             'Today is ${now.day}/${now.month}/${now.year}. Standard time: ${now.hour}:${now.minute}. '
             'The user asked you a voice command outside the app. Give a brief, direct answer (under 2 sentences) suitable for a voice readout.';
 
+        final fullPrompt = contextPrefix.isNotEmpty
+            ? '$contextPrefix\n\n$localContext\n\nUser: "$commandText"'
+            : '$localContext\n\nUser request: "$commandText"';
+
         reply = await GemmaService.instance.generate(
-          '$localContext\n\nUser request: "$commandText"',
+          fullPrompt,
           userName: PrefsService.instance.current.name,
         );
       }
 
-      // 2. Persist the voice turn in active/latest chat history!
       await _persistVoiceTurn(commandText, reply);
 
-      // 3. Send final reply to overlay to display
       _sendToOverlay({'command': 'response', 'text': reply});
       _state = VoiceState.speaking;
       _notify();
 
-      // 4. Leave visible for 5 seconds before returning to idle
       await Future<void>.delayed(const Duration(seconds: 5));
       _sendToOverlay({'command': 'done'});
 
