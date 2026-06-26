@@ -12,6 +12,10 @@ class ContextEngine {
 
   static const _channel = MethodChannel('pocketclaw/accessibility');
 
+  Future<void> init() async {}
+
+  Future<void> dispose() async {}
+
   /// Captures foreground app + screen tree with fallback.
   ///   Accessibility enabled  → foregroundPackage + foregroundAppName + screenTree
   ///   Accessibility disabled → all-null snapshot, accessibilityAvailable: false
@@ -36,9 +40,10 @@ class ContextEngine {
 
       final execResult = results[0] as PrimitiveExecutionResult;
       final contextMap = results[1] as Map<String, String?>;
-      final tree = execResult.ok
+      final rawTree = execResult.ok
           ? execResult.stepResults.first.data['tree'] as String?
           : null;
+      final tree = (rawTree?.isEmpty ?? false) ? null : rawTree;
 
       return ContextSnapshot(
         foregroundPackage: contextMap['package'],

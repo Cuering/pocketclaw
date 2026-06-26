@@ -89,23 +89,26 @@ void main() {
       expect(snap.screenTree, contains('Button'));
     });
 
-    test('snapshot has null screenTree when readScreen returns null', () async {
-      mockChannel((call) async {
-        if (call.method == 'isEnabled') return true;
-        if (call.method == 'getContext') {
-          return {'package': 'com.test.app', 'appName': 'TestApp'};
-        }
-        if (call.method == 'readScreen') {
-          return {'ok': true};
-        }
-        return null;
-      });
+    test(
+      'snapshot has null screenTree when readScreen returns empty tree',
+      () async {
+        mockChannel((call) async {
+          if (call.method == 'isEnabled') return true;
+          if (call.method == 'getContext') {
+            return {'package': 'com.test.app', 'appName': 'TestApp'};
+          }
+          if (call.method == 'readScreen') {
+            return {'ok': true};
+          }
+          return null;
+        });
 
-      final snap = await ContextEngine.instance.capture();
+        final snap = await ContextEngine.instance.capture();
 
-      expect(snap.foregroundPackage, 'com.test.app');
-      expect(snap.screenTree, isEmpty);
-    });
+        expect(snap.foregroundPackage, 'com.test.app');
+        expect(snap.screenTree, isNull);
+      },
+    );
 
     test(
       'never throws — returns empty snapshot on channel exception',
