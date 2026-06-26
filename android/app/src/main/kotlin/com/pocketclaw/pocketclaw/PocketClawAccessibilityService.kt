@@ -5,8 +5,10 @@ import android.accessibilityservice.GestureDescription
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.Path
+import android.os.Build
 import android.os.Bundle
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
@@ -57,6 +59,7 @@ class PocketClawAccessibilityService : AccessibilityService() {
             "readScreen" -> result.success(handleReadScreen())
             "readClipboard" -> result.success(handleReadClipboard())
             "takeScreenshot" -> handleTakeScreenshot(result)
+            "getContext" -> handleGetContext(result)
             else -> result.notImplemented()
         }
     }
@@ -244,6 +247,31 @@ class PocketClawAccessibilityService : AccessibilityService() {
                 }
             },
         )
+    }
+
+    private fun handleGetContext(result: MethodChannel.Result) {
+        val root = rootInActiveWindow
+        if (root == null) {
+            result.success(mapOf("package" to null, "appName" to null))
+            return
+        }
+        val packageName = root.packageName?.toString()
+        root.recycle()
+        val appName: String? = try {
+            val info = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                packageManager.getApplicationInfo(
+                    packageName ?: "",
+                    PackageManager.ApplicationInfoFlags.of(0),
+                )
+            } else {
+                @Suppress("DEPRECATION")
+                packageManager.getApplicationInfo(packageName ?: "", 0)
+            }
+            packageManager.getApplicationLabel(info).toString()
+        } catch (_: Exception) {
+            packageName
+        }
+        result.success(mapOf("package" to packageName, "appName" to appName))
     }
 
     private fun findNode(selector: String): AccessibilityNodeInfo? {
