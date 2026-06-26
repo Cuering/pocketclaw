@@ -21,6 +21,8 @@ import 'core/pocketclaw_theme.dart';
 import 'screens/chat_screen.dart';
 import 'services/context_engine/context_engine.dart';
 import 'services/device_actions_service.dart';
+import 'services/skill_engine/skill_engine.dart';
+import 'services/skill_engine/skill_store.dart';
 import 'services/gemma_service.dart';
 import 'services/prefs_service.dart';
 import 'services/rag_service.dart';
@@ -489,6 +491,8 @@ Future<void> main() async {
   // ignore: discarded_futures
   RagService.instance.init();
   await ContextEngine.instance.init();
+  await SkillStore.instance.init();
+  await SkillEngine.instance.init();
   // Returning users: kick off install + load in background. Onboarding
   // handles first-time users directly so this is a no-op for them.
   if (PrefsService.instance.isOnboarded) {
