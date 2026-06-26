@@ -51,7 +51,18 @@ class SkillEngine {
       _state.value = SkillEngineState.idle;
 
       if (result.ok) {
-        return '✅ Skill "${skill.name}" completed (${skill.steps.length} steps)';
+        final summary =
+            '✅ Skill "${skill.name}" completed (${skill.steps.length} steps)';
+        // Surface any render_component output (a ```pcui fenced block) so the
+        // chat bubble can detect and render it. Without this the component
+        // produced by a render_component step would never reach the UI.
+        final pcuiBlocks = result.stepResults
+            .where((r) => r.data.containsKey('pcui'))
+            .map((r) => r.message)
+            .where((m) => m.trim().isNotEmpty)
+            .toList();
+        if (pcuiBlocks.isEmpty) return summary;
+        return '$summary\n\n${pcuiBlocks.join('\n\n')}';
       } else {
         return '⚠️ Skill "${skill.name}" failed at step ${(result.failedAtStep ?? 0) + 1}: ${result.errorMessage ?? "unknown error"}';
       }
