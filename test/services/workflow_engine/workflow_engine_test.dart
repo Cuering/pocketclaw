@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:pocketclaw/services/workflow_engine/workflow_model.dart';
@@ -410,6 +413,64 @@ void main() {
 
       final stored = TaskStore.instance.get(task.id);
       expect(stored!.status, TaskStatus.cancelled);
+    });
+
+    test('concurrent resume does not double-execute an overdue task', () async {
+      final skill = SkillModel(
+        id: 'sk-race',
+        name: 'Race Skill',
+        steps: [],
+        createdAt: DateTime(2026, 1, 1),
+      );
+      await SkillStore.instance.save(skill);
+      final wf = WorkflowModel(
+        id: 'wf-race',
+        name: 'Race Workflow',
+        stepSkillIds: ['sk-race'],
+        createdAt: DateTime(2026, 1, 1),
+      );
+      await WorkflowStore.instance.save(wf);
+
+      // Gate execution so two resume passes overlap on the same in-flight task.
+      final gate = Completer<void>();
+      var execCount = 0;
+      WorkflowEngine.instance.skillExecuteOverride = (id) async {
+        execCount++;
+        await gate.future;
+        return '✅ done';
+      };
+
+      // Insert an overdue pending task directly (scheduledFor in the past).
+      final task = BackgroundTask(
+        id: 'task-race',
+        title: 'Race Workflow',
+        workflowId: 'wf-race',
+        status: TaskStatus.pending,
+        createdAt: DateTime(2026, 1, 1),
+        scheduledFor: DateTime(2020, 1, 1),
+      );
+      await TaskStore.instance.save(task);
+
+      // Fire two resume passes back-to-back via the public lifecycle hook.
+      BackgroundTaskEngine.instance.didChangeAppLifecycleState(
+        AppLifecycleState.resumed,
+      );
+      BackgroundTaskEngine.instance.didChangeAppLifecycleState(
+        AppLifecycleState.resumed,
+      );
+
+      // Let synchronous prefixes run + microtasks settle while gate is held.
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      // Release the single in-flight run and let it finish.
+      gate.complete();
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      expect(execCount, 1, reason: 'overdue task must execute exactly once');
+      final updated = WorkflowStore.instance.get('wf-race');
+      expect(updated!.runCount, 1);
+
+      WorkflowEngine.instance.skillExecuteOverride = null;
     });
   });
 }

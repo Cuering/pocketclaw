@@ -20,6 +20,10 @@ class BackgroundTaskEngine with WidgetsBindingObserver {
 
   // Keyed by taskId — WorkManager hook point for Phase 5.
   final Map<String, Timer> _timers = {};
+  // Task ids currently executing. Guards the exactly-once contract: a
+  // concurrent _resumePendingTasks (init + rapid app-resume events) must
+  // never start a second run of a task already in flight.
+  final Set<String> _running = {};
   bool _initialized = false;
 
   Future<void> init() async {
@@ -36,6 +40,7 @@ class BackgroundTaskEngine with WidgetsBindingObserver {
       t.cancel();
     }
     _timers.clear();
+    _running.clear();
     _state.dispose();
     debugPrint('🐾 TASK ENGINE: disposed');
   }
@@ -143,6 +148,15 @@ class BackgroundTaskEngine with WidgetsBindingObserver {
   }
 
   Future<void> _runTask(BackgroundTask task) async {
+    // Exactly-once guard. The synchronous prefix here (the membership check +
+    // add) runs to completion before any await yields, so a concurrent caller
+    // that already selected this still-pending task is turned away.
+    if (_running.contains(task.id)) {
+      debugPrint('🐾 TASK ENGINE: task ${task.id} already running — skipping');
+      return;
+    }
+    _running.add(task.id);
+
     _state.value = BackgroundTaskEngineState.running;
     task.status = TaskStatus.running;
     await TaskStore.instance.save(task);
@@ -161,6 +175,8 @@ class BackgroundTaskEngine with WidgetsBindingObserver {
       task.result = 'Error: $e';
       task.completedAt = DateTime.now();
       debugPrint('🐾 TASK ENGINE: task ${task.id} failed: $e');
+    } finally {
+      _running.remove(task.id);
     }
 
     await TaskStore.instance.save(task);
