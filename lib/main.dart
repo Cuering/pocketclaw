@@ -19,6 +19,7 @@ import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 
 import 'core/pocketclaw_theme.dart';
 import 'screens/chat_screen.dart';
+import 'services/context_engine/context_engine.dart';
 import 'services/device_actions_service.dart';
 import 'services/gemma_service.dart';
 import 'services/prefs_service.dart';
@@ -487,6 +488,7 @@ Future<void> main() async {
   // is installed (retrieval will simply return empty until embedder ready).
   // ignore: discarded_futures
   RagService.instance.init();
+  await ContextEngine.instance.init();
   // Returning users: kick off install + load in background. Onboarding
   // handles first-time users directly so this is a no-op for them.
   if (PrefsService.instance.isOnboarded) {

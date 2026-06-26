@@ -63,13 +63,9 @@ class ContextEngine {
   Future<Map<String, String?>> _getContext() async {
     try {
       final raw = await _channel
-          .invokeMethod<Map<dynamic, dynamic>>('getContext')
+          .invokeMapMethod<String, String?>('getContext')
           .timeout(const Duration(seconds: 3));
-      if (raw == null) return {};
-      return {
-        'package': raw['package'] as String?,
-        'appName': raw['appName'] as String?,
-      };
+      return raw ?? {};
     } on PlatformException {
       return {};
     } on TimeoutException {
