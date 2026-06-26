@@ -51,3 +51,6 @@ ui_design.md
 FEATURES_GUIDE.md
 REVERT_GUIDE.md
 POCKETCLAW_FEATURES.md
+
+# Test artifacts (Hive test DB created by Hive.init in tests)
+test/hive_test_db/
