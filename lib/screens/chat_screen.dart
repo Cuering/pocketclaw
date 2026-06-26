@@ -28,6 +28,7 @@ import '../widgets/message_bubble.dart';
 import 'conversation_list_screen.dart';
 import 'skills_screen.dart';
 import 'workflows_screen.dart';
+import '../services/marketplace/marketplace_service.dart';
 
 const String kMainPortName = 'pocketclaw_main_port';
 
@@ -398,6 +399,12 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     }
   }
 
+  /// Routes a dynamic-UI button command through the existing send path.
+  void _handleComponentCommand(String command) {
+    if (command.trim().isEmpty) return;
+    _handleSend(command); // existing send path; self-guards on _busy
+  }
+
   void _showSnack(String message) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -408,6 +415,15 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   /// Build the prompt sent to Gemma, including conversation history.
   String _buildPromptFromHistory(String newUserText) {
     final buffer = StringBuffer();
+    buffer.writeln(
+      'You may render a rich UI component instead of plain text ONLY when the '
+      'data is clearly structured. To do so, output a fenced block:\n'
+      '```pcui\n{"type":"card","title":"...","body":"..."}\n```\n'
+      'Supported types: card {title,body}; list {items:[{title,subtitle}]}; '
+      'key_value {title,rows:[{label,value}]}; buttons {buttons:[{label,command}]}. '
+      'Prefer plain text for normal answers. Emit at most one component.',
+    );
+    buffer.writeln();
     if (_hasPriorUploadMemory()) {
       buffer.writeln(
         '[Memory rule] Earlier image/document summaries below are available '
@@ -1284,6 +1300,38 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     }
   }
 
+  Future<void> _importSkillBundle() async {
+    try {
+      final result = await MarketplaceService.instance.importFromFile();
+      if (!mounted) return;
+      if (result == null) return; // cancelled
+      final msg = StringBuffer(
+        'Added ${result.skillsAdded} skill'
+        '${result.skillsAdded == 1 ? '' : 's'}',
+      );
+      if (result.workflowsAdded > 0) {
+        msg.write(', ${result.workflowsAdded} workflow'
+            '${result.workflowsAdded == 1 ? '' : 's'}');
+      }
+      if (result.warnings.isNotEmpty) {
+        msg.write(' (${result.warnings.length} warning'
+            '${result.warnings.length == 1 ? '' : 's'})');
+      }
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(msg.toString())));
+    } on FormatException {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Not a valid .pcskill file')),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Couldn't import that file.")),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -1303,7 +1351,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           //   tooltip: 'Claw Settings',
           // ),
           PopupMenuButton<String>(
-            onSelected: (value) {
+            onSelected: (value) async {
               if (value == 'clear') {
                 setState(() {
                   _conversation = Conversation();
@@ -1322,12 +1370,15 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                     builder: (_) => const WorkflowsScreen(),
                   ),
                 );
+              } else if (value == 'import_skill') {
+                await _importSkillBundle();
               }
             },
             itemBuilder: (_) => const [
               PopupMenuItem(value: 'clear', child: Text('New chat')),
               PopupMenuItem(value: 'skills', child: Text('Skills')),
               PopupMenuItem(value: 'workflows', child: Text('Workflows')),
+              PopupMenuItem(value: 'import_skill', child: Text('Import skill…')),
             ],
           ),
         ],
@@ -1451,6 +1502,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                           m.text == '__CLAW_ERROR__';
                       return MessageBubble(
                         message: m,
+                        onCommand: _handleComponentCommand,
                         loadingText: m.isAssistant && m.text.isEmpty && _busy
                             ? _thinkingStatus
                             : null,

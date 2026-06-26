@@ -181,6 +181,30 @@ void main() {
       expect(SkillEngine.instance.state.value, SkillEngineState.error);
     });
 
+    test('execute surfaces render_component pcui output in the result', () async {
+      // A render_component-only skill is local (no accessibility needed). Its
+      // pcui fence must appear in the returned string so the chat bubble can
+      // render the component (Source B end-to-end).
+      final skill = SkillModel(
+        id: 'eng-pcui',
+        name: 'Show Card',
+        steps: const [
+          PrimitiveStep(
+            primitive: 'render_component',
+            args: {
+              'spec': {'type': 'card', 'title': 'Hi', 'body': 'there'},
+            },
+          ),
+        ],
+        createdAt: DateTime(2026, 6, 1),
+      );
+      await SkillStore.instance.save(skill);
+
+      final result = await SkillEngine.instance.execute('eng-pcui');
+      expect(result, contains('```pcui'));
+      expect(result, contains('"type":"card"'));
+    });
+
     test('list returns all saved skills', () async {
       final skill = SkillModel(
         id: 'eng-1',
