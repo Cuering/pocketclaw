@@ -26,6 +26,7 @@ import '../services/web_search_service.dart';
 import '../widgets/chat_input.dart';
 import '../widgets/message_bubble.dart';
 import 'conversation_list_screen.dart';
+import 'skills_screen.dart';
 
 const String kMainPortName = 'pocketclaw_main_port';
 
@@ -1310,10 +1311,15 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                   _pendingDocumentText = null;
                 });
                 _loadDocuments();
+              } else if (value == 'skills') {
+                Navigator.of(context).push(
+                  MaterialPageRoute<void>(builder: (_) => const SkillsScreen()),
+                );
               }
             },
             itemBuilder: (_) => const [
               PopupMenuItem(value: 'clear', child: Text('New chat')),
+              PopupMenuItem(value: 'skills', child: Text('Skills')),
             ],
           ),
         ],

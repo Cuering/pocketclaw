@@ -15,9 +15,9 @@ class ChatCommandService {
     final trimmed = text.trim();
     if (trimmed.isEmpty) return null;
 
-    // 0. Skill execution: "run X" / "execute X" / "use skill X" / "launch skill X"
+    // 0. Skill execution: "run skill X" / "execute skill X" / "use skill X" / "launch skill X"
     final runMatch = RegExp(
-      r'^(?:run|execute|use skill|launch skill)\s+(.+)$',
+      r'^(?:run|execute|use|launch) skill\s+(.+)$',
       caseSensitive: false,
     ).firstMatch(trimmed);
     if (runMatch != null) {
