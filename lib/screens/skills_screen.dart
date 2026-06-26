@@ -24,14 +24,16 @@ class _SkillsScreenState extends State<SkillsScreen> {
     super.dispose();
   }
 
-  Future<void> _createSkill() async {
+  Future<void> _createSkill({StateSetter? dialogSetState}) async {
     final description = _descController.text.trim();
     if (description.isEmpty) return;
 
     setState(() { _creating = true; });
+    dialogSetState?.call(() {});
     final skill = await SkillEngine.instance.generate(description);
     if (!mounted) return;
     setState(() { _creating = false; });
+    dialogSetState?.call(() {});
 
     if (skill != null) {
       _descController.clear();
@@ -113,7 +115,7 @@ class _SkillsScreenState extends State<SkillsScreen> {
               onPressed: _creating
                   ? null
                   : () async {
-                      await _createSkill();
+                      await _createSkill(dialogSetState: setStateInner);
                     },
               child: _creating
                   ? const SizedBox(
