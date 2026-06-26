@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
 import '../core/pocketclaw_theme.dart';
+import '../services/background_task_engine/background_task_engine.dart';
 import '../services/workflow_engine/workflow_engine.dart';
 import '../services/workflow_engine/workflow_model.dart';
 import '../services/workflow_engine/workflow_store.dart';
-import '../services/background_task_engine/background_task_engine.dart';
 
 class WorkflowsScreen extends StatefulWidget {
   const WorkflowsScreen({super.key});
@@ -93,7 +93,9 @@ class _WorkflowsScreenState extends State<WorkflowsScreen> {
             onPressed: () => Navigator.pop(ctx, true),
             child: Text(
               'Delete',
-              style: TextStyle(color: PocketClawTheme.error),
+              style: Theme.of(ctx).textTheme.bodyMedium?.copyWith(
+                    color: PocketClawTheme.error,
+                  ),
             ),
           ),
         ],
@@ -123,7 +125,9 @@ class _WorkflowsScreenState extends State<WorkflowsScreen> {
             style: Theme.of(ctx).textTheme.bodyMedium,
             decoration: InputDecoration(
               hintText: 'Describe what the workflow should do...',
-              hintStyle: TextStyle(color: PocketClawTheme.muted),
+              hintStyle: Theme.of(ctx).textTheme.bodyMedium?.copyWith(
+                  color: PocketClawTheme.muted,
+                ),
               border: OutlineInputBorder(
                 borderSide: BorderSide(color: PocketClawTheme.cyan, width: 2),
               ),
@@ -171,11 +175,31 @@ class _WorkflowsScreenState extends State<WorkflowsScreen> {
           ),
         ],
       ),
-      body: ValueListenableBuilder<Box<String>>(
-        valueListenable: WorkflowStore.instance.box.listenable(),
-        builder: (context, box, _) {
-          final workflows = WorkflowEngine.instance.list();
-          if (workflows.isEmpty) {
+      body: ValueListenableBuilder<WorkflowEngineState>(
+        valueListenable: WorkflowEngine.instance.state,
+        builder: (context, engineState, _) => Column(
+          children: [
+            if (engineState == WorkflowEngineState.error)
+              Container(
+                width: double.infinity,
+                color: PocketClawTheme.error.withValues(alpha: 0.15),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 8,
+                ),
+                child: Text(
+                  WorkflowEngine.instance.lastError ?? 'Workflow engine error',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: PocketClawTheme.error,
+                  ),
+                ),
+              ),
+            Expanded(
+              child: ValueListenableBuilder<Box<String>>(
+                valueListenable: WorkflowStore.instance.box.listenable(),
+                builder: (context, box, _) {
+                  final workflows = WorkflowEngine.instance.list();
+                  if (workflows.isEmpty) {
             return Center(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -254,9 +278,11 @@ class _WorkflowsScreenState extends State<WorkflowsScreen> {
                   ),
                 ),
               );
-            },
-          );
-        },
+                },
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
