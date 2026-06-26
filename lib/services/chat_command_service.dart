@@ -3,7 +3,8 @@ import 'package:flutter/foundation.dart';
 import 'device_actions_service.dart';
 import 'gemma_service.dart';
 import 'skill_engine/skill_engine.dart';
-import 'skill_engine/skill_store.dart';
+import 'workflow_engine/workflow_engine.dart';
+import 'background_task_engine/background_task_engine.dart';
 
 class ChatCommandService {
   ChatCommandService._();
@@ -15,7 +16,27 @@ class ChatCommandService {
     final trimmed = text.trim();
     if (trimmed.isEmpty) return null;
 
-    // 0. Skill execution: "run skill X" / "execute skill X" / "use skill X" / "launch skill X"
+    // 0a. Workflow execution: "run workflow X" / "execute workflow X" / "launch workflow X"
+    final runWfMatch = RegExp(
+      r'^(?:run|execute|launch) workflow\s+(.+)$',
+      caseSensitive: false,
+    ).firstMatch(trimmed);
+    if (runWfMatch != null) {
+      final name = runWfMatch.group(1)!.trim();
+      return await _runWorkflowByName(name);
+    }
+
+    // 0b. Workflow generation: "create workflow: X" / "new workflow: X"
+    final createWfMatch = RegExp(
+      r'^(?:create workflow|new workflow)[:\s]+(.+)$',
+      caseSensitive: false,
+    ).firstMatch(trimmed);
+    if (createWfMatch != null) {
+      final description = createWfMatch.group(1)!.trim();
+      return await _createWorkflowFromCommand(description);
+    }
+
+    // 0c. Skill execution: "run skill X" / "execute skill X" / "use skill X" / "launch skill X"
     final runMatch = RegExp(
       r'^(?:run|execute|use|launch) skill\s+(.+)$',
       caseSensitive: false,
@@ -25,7 +46,7 @@ class ChatCommandService {
       return await _runSkillByName(skillName);
     }
 
-    // 0b. Skill generation: "create skill: X" / "make skill: X" / "new skill: X"
+    // 0d. Skill generation: "create skill: X" / "make skill: X" / "new skill: X"
     final createMatch = RegExp(
       r'^(?:create skill|make skill|new skill)[:\s]+(.+)$',
       caseSensitive: false,
@@ -220,7 +241,9 @@ Output EXACTLY the JSON object and absolutely nothing else. No markdown wraps, n
 
   Future<String?> _runSkillByName(String nameQuery) async {
     final skills = SkillEngine.instance.list();
-    if (skills.isEmpty) return 'No skills saved. Say "create skill: [description]" to make one.';
+    if (skills.isEmpty) {
+      return 'No skills saved. Say "create skill: [description]" to make one.';
+    }
 
     final lower = nameQuery.toLowerCase();
     final match = skills.firstWhere(
@@ -248,5 +271,39 @@ Output EXACTLY the JSON object and absolutely nothing else. No markdown wraps, n
       return 'Could not generate skill. Try a clearer description.';
     }
     return '✅ Skill "${skill.name}" created with ${skill.steps.length} step${skill.steps.length == 1 ? '' : 's'}.';
+  }
+
+  Future<String?> _runWorkflowByName(String nameQuery) async {
+    final workflows = WorkflowEngine.instance.list();
+    if (workflows.isEmpty) {
+      return 'No workflows saved. Say "create workflow: [description]" to make one.';
+    }
+
+    final lower = nameQuery.toLowerCase();
+    final match = workflows.firstWhere(
+      (w) => w.name.toLowerCase().contains(lower),
+      orElse: () => workflows.firstWhere(
+        (w) => lower.contains(w.name.toLowerCase()),
+        orElse: () => workflows.first,
+      ),
+    );
+
+    final isRealMatch =
+        match.name.toLowerCase().contains(lower) ||
+        lower.contains(match.name.toLowerCase());
+    if (!isRealMatch) {
+      return "No workflow named '$nameQuery' found. Available: ${workflows.map((w) => w.name).join(', ')}.";
+    }
+
+    final task = await BackgroundTaskEngine.instance.schedule(match.id);
+    return task.result ?? '✅ Workflow "${match.name}" complete.';
+  }
+
+  Future<String?> _createWorkflowFromCommand(String description) async {
+    final workflow = await WorkflowEngine.instance.generate(description);
+    if (workflow == null) {
+      return 'Could not generate workflow. Create some skills first, then try again.';
+    }
+    return '✅ Workflow "${workflow.name}" created with ${workflow.stepSkillIds.length} step${workflow.stepSkillIds.length == 1 ? '' : 's'}.';
   }
 }
