@@ -398,6 +398,12 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     }
   }
 
+  /// Routes a dynamic-UI button command through the existing send path.
+  void _handleComponentCommand(String command) {
+    if (command.trim().isEmpty) return;
+    _handleSend(command); // existing send path; self-guards on _busy
+  }
+
   void _showSnack(String message) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -408,6 +414,15 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   /// Build the prompt sent to Gemma, including conversation history.
   String _buildPromptFromHistory(String newUserText) {
     final buffer = StringBuffer();
+    buffer.writeln(
+      'You may render a rich UI component instead of plain text ONLY when the '
+      'data is clearly structured. To do so, output a fenced block:\n'
+      '```pcui\n{"type":"card","title":"...","body":"..."}\n```\n'
+      'Supported types: card {title,body}; list {items:[{title,subtitle}]}; '
+      'key_value {title,rows:[{label,value}]}; buttons {buttons:[{label,command}]}. '
+      'Prefer plain text for normal answers. Emit at most one component.',
+    );
+    buffer.writeln();
     if (_hasPriorUploadMemory()) {
       buffer.writeln(
         '[Memory rule] Earlier image/document summaries below are available '
@@ -1451,6 +1466,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                           m.text == '__CLAW_ERROR__';
                       return MessageBubble(
                         message: m,
+                        onCommand: _handleComponentCommand,
                         loadingText: m.isAssistant && m.text.isEmpty && _busy
                             ? _thinkingStatus
                             : null,

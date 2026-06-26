@@ -4,6 +4,9 @@ import 'package:flutter/services.dart';
 
 import '../core/pocketclaw_theme.dart';
 import '../models/message.dart';
+import '../services/dynamic_ui/dynamic_ui_service.dart';
+import '../services/dynamic_ui/component_spec.dart';
+import 'dynamic_component_widget.dart';
 
 /// Sentinel that ChatScreen writes into a message's text field when a
 /// generation fails. The bubble renderer replaces it with a friendly
@@ -18,6 +21,7 @@ class MessageBubble extends StatelessWidget {
     this.onRetry,
     this.onDocTap,
     this.loadingText,
+    this.onCommand,
   });
 
   final Message message;
@@ -28,6 +32,10 @@ class MessageBubble extends StatelessWidget {
   /// while doc is still indexing).
   final VoidCallback? onDocTap;
   final String? loadingText;
+
+  /// Called when a dynamic UI button inside an assistant bubble is tapped.
+  /// The command string is forwarded to the chat send path.
+  final void Function(String command)? onCommand;
 
   static const _shareChannel = MethodChannel('pocketclaw/share');
 
@@ -134,6 +142,7 @@ class MessageBubble extends StatelessWidget {
                       : _AssistantMessageContent(
                           text: message.text,
                           textColor: textColor,
+                          onCommand: onCommand,
                         ),
                 if (!isUser &&
                     !isError &&
@@ -301,20 +310,27 @@ class _ActionButton extends StatelessWidget {
 }
 
 class _AssistantMessageContent extends StatelessWidget {
-  const _AssistantMessageContent({required this.text, required this.textColor});
+  const _AssistantMessageContent({
+    required this.text,
+    required this.textColor,
+    this.onCommand,
+  });
 
   final String text;
   final Color textColor;
+  final void Function(String command)? onCommand;
 
   @override
   Widget build(BuildContext context) {
-    final segments = _splitMarkdownCodeBlocks(text);
+    final segments = _splitSegments(text);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
         for (final segment in segments) ...[
-          if (segment.isCode)
+          if (segment.pcuiSpec != null)
+            DynamicComponentWidget(spec: segment.pcuiSpec!, onCommand: onCommand)
+          else if (segment.isCode)
             _CopyableCodeBlock(code: segment.text)
           else if (segment.text.trim().isNotEmpty)
             MarkdownBody(
@@ -333,15 +349,29 @@ class _AssistantMessageContent extends StatelessWidget {
     );
   }
 
-  List<_ContentSegment> _splitMarkdownCodeBlocks(String value) {
-    final pattern = RegExp(r'```[^\n]*\n([\s\S]*?)```');
+  /// Splits text into ordered segments: pcui components, code blocks, and
+  /// plain text. A ```pcui block that parses becomes a [pcuiSpec] segment;
+  /// one that fails to parse falls through as a normal code segment.
+  List<_ContentSegment> _splitSegments(String value) {
+    final pattern = RegExp(r'```([^\n]*)\n([\s\S]*?)```');
     final segments = <_ContentSegment>[];
     var cursor = 0;
     for (final match in pattern.allMatches(value)) {
       if (match.start > cursor) {
         segments.add(_ContentSegment(value.substring(cursor, match.start)));
       }
-      segments.add(_ContentSegment(match.group(1) ?? '', isCode: true));
+      final tag = (match.group(1) ?? '').trim().toLowerCase();
+      final inner = match.group(2) ?? '';
+      if (tag == 'pcui') {
+        final spec = DynamicUiService.instance.parse(inner);
+        if (spec != null) {
+          segments.add(_ContentSegment('', pcuiSpec: spec));
+        } else {
+          segments.add(_ContentSegment(inner, isCode: true));
+        }
+      } else {
+        segments.add(_ContentSegment(inner, isCode: true));
+      }
       cursor = match.end;
     }
     if (cursor < value.length) {
@@ -352,10 +382,11 @@ class _AssistantMessageContent extends StatelessWidget {
 }
 
 class _ContentSegment {
-  _ContentSegment(this.text, {this.isCode = false});
+  _ContentSegment(this.text, {this.isCode = false, this.pcuiSpec});
 
   final String text;
   final bool isCode;
+  final ComponentSpec? pcuiSpec;
 }
 
 class _CopyableCodeBlock extends StatelessWidget {
