@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
@@ -52,14 +54,18 @@ class PrimitiveEngine {
     }
     _state.value = PrimitiveState.running;
 
-    final enabled = await isAccessibilityEnabled();
-    if (!enabled) {
-      _state.value = PrimitiveState.idle;
-      return const PrimitiveExecutionResult(
-        ok: false,
-        stepResults: [],
-        errorMessage: 'Accessibility permission required',
-      );
+    final needsAccessibility =
+        steps.any((s) => !PrimitiveStep.localPrimitives.contains(s.primitive));
+    if (needsAccessibility) {
+      final enabled = await isAccessibilityEnabled();
+      if (!enabled) {
+        _state.value = PrimitiveState.idle;
+        return const PrimitiveExecutionResult(
+          ok: false,
+          stepResults: [],
+          errorMessage: 'Accessibility permission required',
+        );
+      }
     }
 
     final results = <PrimitiveResult>[];
@@ -101,6 +107,16 @@ class PrimitiveEngine {
   }
 
   Future<PrimitiveResult> _executeStep(PrimitiveStep step) async {
+    if (step.primitive == 'render_component') {
+      final spec = step.args['spec'] as Map;
+      final json = jsonEncode(spec);
+      return PrimitiveResult(
+        ok: true,
+        message: '```pcui\n$json\n```',
+        data: {'pcui': json},
+      );
+    }
+
     final method = switch (step.primitive) {
       'read_screen' => 'readScreen',
       'read_clipboard' => 'readClipboard',

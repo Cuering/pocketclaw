@@ -6,6 +6,8 @@ class PrimitiveStep {
 
   const PrimitiveStep({required this.primitive, this.args = const {}});
 
+  static const localPrimitives = {'render_component'};
+
   factory PrimitiveStep.fromJson(Map<String, dynamic> json) {
     final primitive = json['primitive'] as String?;
     if (primitive == null || primitive.isEmpty) {
@@ -21,6 +23,7 @@ class PrimitiveStep {
       'read_screen',
       'read_clipboard',
       'take_screenshot',
+      'render_component',
     };
     if (!supported.contains(primitive)) {
       throw ArgumentError('Unknown primitive: $primitive');
@@ -64,6 +67,13 @@ class PrimitiveStep {
           if (args[field] is! int) {
             throw ArgumentError("swipe requires '$field': int");
           }
+        }
+      case 'render_component':
+        final spec = args['spec'];
+        if (spec is! Map || spec['type'] is! String || (spec['type'] as String).isEmpty) {
+          throw ArgumentError(
+            "render_component requires 'spec': {'type': String, ...}",
+          );
         }
     }
   }
