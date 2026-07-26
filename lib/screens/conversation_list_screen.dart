@@ -7,7 +7,7 @@ import '../services/conversation_store.dart';
 /// List of all stored conversations. Tap to switch, long-press to delete.
 ///
 /// Pops with the picked conversation (or with a sentinel Conversation
-/// having id='新建' when the user taps "新对话").
+/// having id='NEW' when the user taps "New chat").
 class ConversationListScreen extends StatefulWidget {
   const ConversationListScreen({
     super.key,
@@ -41,16 +41,16 @@ class _ConversationListScreenState extends State<ConversationListScreen> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
-        title: const Text('删除对话？'),
+        title: const Text('Delete conversation?'),
         content: Text('"${conv.title}" will be permanently removed.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('取消'),
+            child: const Text('Cancel'),
           ),
           FilledButton.tonal(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('删除'),
+            child: const Text('Delete'),
           ),
         ],
       ),
@@ -61,7 +61,7 @@ class _ConversationListScreenState extends State<ConversationListScreen> {
     }
   }
 
-  /// Build a relative-time string like "5m ago", "2h ago", "昨天",
+  /// Build a relative-time string like "5m ago", "2h ago", "yesterday",
   /// "May 12". Cheap, no l10n, good enough for v1.
   String _relativeTime(DateTime dt) {
     final now = DateTime.now();
@@ -69,7 +69,7 @@ class _ConversationListScreenState extends State<ConversationListScreen> {
     if (diff.inSeconds < 60) return 'just now';
     if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
     if (diff.inHours < 24) return '${diff.inHours}h ago';
-    if (diff.inDays == 1) return '昨天';
+    if (diff.inDays == 1) return 'yesterday';
     if (diff.inDays < 7) return '${diff.inDays}d ago';
     return DateFormat.MMMd().format(dt);
   }
@@ -77,17 +77,17 @@ class _ConversationListScreenState extends State<ConversationListScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('对话列表')),
+      appBar: AppBar(title: const Text('Conversations')),
       body: Column(
         children: [
           ListTile(
             leading: const Icon(Icons.add),
-            title: const Text('新对话'),
+            title: const Text('New chat'),
             onTap: () {
-              // Sentinel: empty Conversation with id='新建' signals "start new"
+              // Sentinel: empty Conversation with id='NEW' signals "start new"
               Navigator.pop(
                 context,
-                Conversation(id: '新建', title: '新对话'),
+                Conversation(id: 'NEW', title: 'New chat'),
               );
             },
           ),
@@ -105,7 +105,7 @@ class _ConversationListScreenState extends State<ConversationListScreen> {
                     child: Padding(
                       padding: const EdgeInsets.all(32),
                       child: Text(
-                        '还没有对话。从主页开始聊天吧。',
+                        'No conversations yet. Start a chat from the home screen.',
                         textAlign: TextAlign.center,
                         style: Theme.of(context).textTheme.bodyMedium,
                       ),
