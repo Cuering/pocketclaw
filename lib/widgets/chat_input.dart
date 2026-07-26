@@ -7,12 +7,12 @@ import '../services/device_actions_service.dart';
 
 /// Bottom input bar: attachment thumbnail (if any), text field, send button.
 ///
-/// Notifies parent via [on发送] when the user taps send. The parent is
+/// Notifies parent via [onSend] when the user taps send. The parent is
 /// responsible for clearing the attachment state after a send.
-class 对话Input extends StatefulWidget {
-  const 对话Input({
+class ChatInput extends StatefulWidget {
+  const ChatInput({
     super.key,
-    required this.on发送,
+    required this.onSend,
     required this.enabled,
     this.attachedImage,
     this.attachedImageName,
@@ -26,7 +26,7 @@ class 对话Input extends StatefulWidget {
     this.autoListen = false,
   });
 
-  final void Function(String text) on发送;
+  final void Function(String text) onSend;
   final bool enabled;
   final Uint8List? attachedImage;
   final String? attachedImageName;
@@ -40,10 +40,10 @@ class 对话Input extends StatefulWidget {
   final bool autoListen;
 
   @override
-  State<对话Input> createState() => _对话InputState();
+  State<ChatInput> createState() => _ChatInputState();
 }
 
-class _对话InputState extends State<对话Input>
+class _ChatInputState extends State<ChatInput>
     with SingleTickerProviderStateMixin {
   final _controller = TextEditingController();
   final _focusNode = FocusNode();
@@ -68,7 +68,7 @@ class _对话InputState extends State<对话Input>
   }
 
   @override
-  void didUpdateWidget(对话Input oldWidget) {
+  void didUpdateWidget(ChatInput oldWidget) {
     super.didUpdateWidget(oldWidget);
     // Auto-trigger recording if passed from parent
     if (widget.autoListen == true && oldWidget.autoListen != true) {
@@ -159,7 +159,7 @@ class _对话InputState extends State<对话Input>
     super.dispose();
   }
 
-  void _handle发送() {
+  void _handleSend() {
     final text = _controller.text.trim();
     if (text.isEmpty &&
         widget.attachedImage == null &&
@@ -167,7 +167,7 @@ class _对话InputState extends State<对话Input>
       return;
     }
     if (!widget.enabled || widget.preparingAttachment) return;
-    widget.on发送(text);
+    widget.onSend(text);
     _controller.clear();
     _focusNode.requestFocus();
   }
@@ -248,15 +248,15 @@ class _对话InputState extends State<对话Input>
                         _isPressed = true;
                         // 1. Dynamic mic permission check & request
                         final permissions = await DeviceActionsService.instance
-                            .checkApp权限();
+                            .checkAppPermissions();
                         if (permissions['mic'] != true) {
                           await DeviceActionsService.instance
-                              .requestApp权限();
+                              .requestAppPermissions();
                           await Future<void>.delayed(
                             const Duration(milliseconds: 600),
                           );
                           final recheck = await DeviceActionsService.instance
-                              .checkApp权限();
+                              .checkAppPermissions();
                           if (recheck['mic'] != true) {
                             _isPressed = false;
                             return; // User did not grant permission
@@ -282,11 +282,11 @@ class _对话InputState extends State<对话Input>
                             const Duration(milliseconds: 400),
                           );
                           if (_controller.text.trim().isNotEmpty) {
-                            _handle发送();
+                            _handleSend();
                           }
                         }
                       },
-                      onTap取消: () async {
+                      onTapCancel: () async {
                         _isPressed = false;
                         if (!widget.enabled) return;
                         if (_isListening) {
@@ -320,9 +320,9 @@ class _对话InputState extends State<对话Input>
                       ),
                     )
                   else
-                    _发送Button(
+                    _SendButton(
                       onPressed: widget.enabled && !widget.preparingAttachment
-                          ? _handle发送
+                          ? _handleSend
                           : null,
                     ),
                 ],
@@ -366,8 +366,8 @@ class _InputIconButton extends StatelessWidget {
   }
 }
 
-class _发送Button extends StatelessWidget {
-  const _发送Button({required this.onPressed});
+class _SendButton extends StatelessWidget {
+  const _SendButton({required this.onPressed});
 
   final VoidCallback? onPressed;
 
