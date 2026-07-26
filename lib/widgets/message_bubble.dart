@@ -122,7 +122,7 @@ class MessageBubble extends StatelessWidget {
                     TextButton.icon(
                       onPressed: onRetry,
                       icon: Icon(Icons.refresh, size: 16, color: textColor),
-                      label: Text('Retry', style: TextStyle(color: textColor)),
+                      label: Text('重试', style: TextStyle(color: textColor)),
                       style: TextButton.styleFrom(
                         padding: const EdgeInsets.symmetric(
                           horizontal: 8,
@@ -188,7 +188,7 @@ class MessageBubble extends StatelessWidget {
     await Clipboard.setData(ClipboardData(text: value));
     if (!context.mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Copied'), duration: Duration(seconds: 1)),
+      const SnackBar(content: Text('已复制'), duration: Duration(seconds: 1)),
     );
   }
 
@@ -259,20 +259,20 @@ class _MessageActions extends StatelessWidget {
         children: [
           _ActionButton(
             icon: Icons.copy_outlined,
-            label: 'Copy',
+            label: '复制',
             color: color,
             onPressed: copyText.trim().isEmpty ? null : () => onCopy(copyText),
           ),
           _ActionButton(
             icon: Icons.ios_share_outlined,
-            label: 'Share',
+            label: '分享',
             color: color,
             onPressed: copyText.trim().isEmpty ? null : () => onShare(copyText),
           ),
           if (onRetry != null)
             _ActionButton(
               icon: Icons.refresh,
-              label: 'Try again',
+              label: '再试一次',
               color: color,
               onPressed: onRetry,
             ),
@@ -421,13 +421,13 @@ class _CopyableCodeBlock extends StatelessWidget {
             right: 6,
             child: IconButton(
               icon: const Icon(Icons.copy_outlined, size: 18),
-              tooltip: 'Copy code',
+              tooltip: '复制代码',
               onPressed: () async {
                 await Clipboard.setData(ClipboardData(text: code.trimRight()));
                 if (!context.mounted) return;
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
-                    content: Text('Code copied'),
+                    content: Text('代码已复制'),
                     duration: Duration(seconds: 1),
                   ),
                 );
