@@ -10,7 +10,7 @@ import 'message.dart';
 class Conversation {
   Conversation({
     String? id,
-    this.title = 'New chat',
+    this.title = '新建聊天',
     List<Message>? messages,
     this.contextSummary,
     this.contextSummaryMessageCount = 0,
@@ -30,7 +30,7 @@ class Conversation {
   DateTime updatedAt;
 
   /// Derive a title from the first non-empty user message.
-  /// Falls back to 'New chat' if there are no user messages yet.
+  /// 若还没有用户消息，则回退为「新建聊天」。
   /// Capped at 60 characters; newlines collapsed to spaces.
   String deriveTitleFromMessages() {
     final firstUser = messages.firstWhere(
@@ -39,8 +39,8 @@ class Conversation {
     );
     if (firstUser.text.trim().isEmpty) {
       // If only an image was sent, use a generic title.
-      if (messages.any((m) => m.hasImage)) return 'Image chat';
-      return 'New chat';
+      if (messages.any((m) => m.hasImage)) return '图片会话';
+      return '新建聊天';
     }
     final cleaned = firstUser.text.replaceAll(RegExp(r'\s+'), ' ').trim();
     return cleaned.length > 60 ? '${cleaned.substring(0, 60)}…' : cleaned;
@@ -58,7 +58,7 @@ class Conversation {
 
   factory Conversation.fromJson(Map<String, dynamic> json) => Conversation(
     id: json['id'] as String?,
-    title: json['title'] as String? ?? 'New chat',
+    title: json['title'] as String? ?? '新建聊天',
     messages: (json['messages'] as List? ?? [])
         .map((m) => Message.fromJson(Map<String, dynamic>.from(m as Map)))
         .toList(),
