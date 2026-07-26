@@ -81,7 +81,7 @@ class _ClawBubbleState extends State<_ClawBubble> {
   // Voice Interaction States
   bool _listening = false;
   bool _thinking = false;
-  String _statusText = 'Hey PC...';
+  String _statusText = '嘿，PC…';
   String? _responseSpeechText;
 
   @override
@@ -114,26 +114,26 @@ class _ClawBubbleState extends State<_ClawBubble> {
           setState(() {
             _listening = true;
             _thinking = false;
-            _statusText = 'Hey PC...';
+            _statusText = '嘿，PC…';
             _responseSpeechText = null;
           });
         } else if (command == 'transcription') {
           setState(() {
             _listening = true;
-            _statusText = message['text'] as String? ?? 'Listening...';
+            _statusText = message['text'] as String? ?? '正在听…';
           });
         } else if (command == 'thinking') {
           setState(() {
             _listening = false;
             _thinking = true;
-            _statusText = 'Thinking...';
+            _statusText = '思考中…';
           });
         } else if (command == 'response') {
           setState(() {
             _listening = false;
             _thinking = false;
             _responseSpeechText = message['text'] as String?;
-            _statusText = 'Claw responded.';
+            _statusText = '爪爪已回复。';
           });
         } else if (command == 'done') {
           _collapse();
@@ -166,7 +166,7 @@ class _ClawBubbleState extends State<_ClawBubble> {
       _expanded = true;
       _listening = true;
       _thinking = false;
-      _statusText = 'Listening...';
+      _statusText = '正在听…';
       _responseSpeechText = null;
     });
   }
@@ -259,9 +259,9 @@ class _ClawBubbleState extends State<_ClawBubble> {
             Expanded(
               child: Text(
                 _listening
-                    ? 'LISTENING'
+                    ? '聆听中'
                     : _thinking
-                    ? 'THINKING'
+                    ? '思考中'
                     : 'CLAW',
                 style: TextStyle(
                   color: _listening
@@ -274,7 +274,7 @@ class _ClawBubbleState extends State<_ClawBubble> {
             ),
             _OverlayIconButton(
               icon: Icons.close,
-              tooltip: 'Close',
+              tooltip: '关闭',
               onPressed: _collapse,
             ),
           ],
@@ -295,8 +295,8 @@ class _ClawBubbleState extends State<_ClawBubble> {
                 _listening
                     ? _statusText
                     : _thinking
-                    ? 'Claw is thinking offline...'
-                    : _responseSpeechText ?? 'Speak your command...',
+                    ? '爪爪正在离线思考…'
+                    : _responseSpeechText ?? '说出你的指令…',
                 style: const TextStyle(
                   color: PocketClawTheme.text,
                   fontSize: 10,
@@ -344,7 +344,7 @@ class _ClawBubbleState extends State<_ClawBubble> {
             ),
             _OverlayIconButton(
               icon: Icons.close,
-              tooltip: 'Minimize',
+              tooltip: '收起',
               onPressed: _collapse,
             ),
           ],
@@ -355,7 +355,7 @@ class _ClawBubbleState extends State<_ClawBubble> {
             Expanded(
               child: _OverlayAction(
                 icon: Icons.mic,
-                label: 'Voice',
+                label: '语音',
                 onTap: _manualListen,
               ),
             ),
@@ -363,7 +363,7 @@ class _ClawBubbleState extends State<_ClawBubble> {
             Expanded(
               child: _OverlayAction(
                 icon: Icons.chat_bubble_outline,
-                label: 'Chat',
+                label: '对话',
                 onTap: _openApp,
               ),
             ),
@@ -375,7 +375,7 @@ class _ClawBubbleState extends State<_ClawBubble> {
             Expanded(
               child: _OverlayAction(
                 icon: Icons.flashlight_on_outlined,
-                label: 'Torch',
+                label: '手电',
                 onTap: () => _send({'type': 'toggle_torch'}),
               ),
             ),
@@ -383,7 +383,7 @@ class _ClawBubbleState extends State<_ClawBubble> {
             Expanded(
               child: _OverlayAction(
                 icon: Icons.power_settings_new,
-                label: 'Deactivate',
+                label: '关闭浮窗',
                 onTap: _destroy,
               ),
             ),
