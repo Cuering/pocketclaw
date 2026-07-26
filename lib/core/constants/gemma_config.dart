@@ -5,71 +5,68 @@ import 'package:flutter_gemma/flutter_gemma.dart';
 
 // `abstract class` here is a stylistic trick: combined with the private
 // `_()` constructor, it makes this class *impossible to instantiate*. It exists
-// purely as a namespace for static constants. (We could also use a normal
-// class — `abstract` just signals intent more loudly: "don't try to new this.")
+// purely as a namespace for static constants.
 abstract class GemmaConfig {
-  // Private named constructor with no body. The leading underscore makes it
-  // library-private, so nothing outside this file can call it. Combined with
-  // the lack of any public constructor, the class can't be instantiated at all.
   GemmaConfig._();
 
-  // The official Gemma 4 E2B model URL on Hugging Face.
-  // `.litertlm` is the LiteRT-LM format — required for Gemma 4 on Android.
-  // `litert-community/...` is a PUBLIC repo, no HF token needed.
-  //
-  // `static const`: belongs to the class (no instance needed) AND known at
-  // compile time. The compiler can inline this string everywhere it's used.
-  static const String modelUrl =
-      'https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/resolve/main/gemma-4-E2B-it.litertlm';
+  // Official Hugging Face host. Often slow/unreachable from CN networks.
+  static const String hfHost = 'https://huggingface.co';
 
-  // The ModelType enum tells flutter_gemma which chat-template path to use.
-  // For Gemma 4 we MUST use `gemma4` (not `gemmaIt`) — Gemma 4 has its own
-  // tool-call tokens and chat template. Using the wrong enum = broken outputs.
+  // China-friendly mirror (https://hf-mirror.com). Same path layout as HF.
+  // Verified 2026-07-26: resolve endpoints return 302 → real file blob.
+  static const String hfMirrorHost = 'https://hf-mirror.com';
+
+  // Model paths (relative to host).
+  static const String _modelPath =
+      '/litert-community/gemma-4-E2B-it-litert-lm/resolve/main/gemma-4-E2B-it.litertlm';
+  static const String _embeddingModelPath =
+      '/litert-community/Gecko-110m-en/resolve/main/Gecko_1024_quant.tflite';
+  static const String _embeddingTokenizerPath =
+      '/litert-community/Gecko-110m-en/resolve/main/sentencepiece.model';
+
+  /// Primary download URL (mirror first for better CN reachability).
+  static const String modelUrl = '$hfMirrorHost$_modelPath';
+
+  /// Fallback if mirror fails (official HF).
+  static const String modelUrlFallback = '$hfHost$_modelPath';
+
+  /// Ordered candidates for inference model download.
+  static const List<String> modelUrlCandidates = [
+    modelUrl,
+    modelUrlFallback,
+  ];
+
   static const ModelType modelType = ModelType.gemma4;
-
-  // ModelFileType: which file FORMAT — drives engine selection.
-  // CRITICAL: defaults to ModelFileType.task in flutter_gemma, but our model
-  // is .litertlm. Without this, the plugin routes load() to the Kotlin
-  // EngineFactory (for .task files), which throws because it knows it's the
-  // wrong engine for .litertlm files. With this, load() correctly routes to
-  // the Dart FFI LiteRT-LM client.
-
   static const ModelFileType fileType = ModelFileType.litertlm;
-  // Enable Gemma 4's vision modality at the engine level. Without this,
-  // flutter_gemma silently strips image bytes from Message.withImage(...)
-  // calls — only the text portion reaches the model, which then asks
-  // "please provide the image." Same class of bug as the Day-2 fileType
-  // default. Always-on for PocketClaw since multimodal is core to v1.
   static const bool supportImage = true;
-  // Max number of images per turn. We send at most one per generate() call.
-  // Higher = more KV cache memory reserved up front.
   static const int maxNumImages = 1;
-  // Max tokens the model can produce in one response. 3072 gives Gemma 4 E2B
-  // enough room for useful summaries/code while keeping local generation from
-  // becoming painfully slow on phones.
   static const int maxTokens = 3072;
-
-  // GPU backend is ~5-7x faster than CPU on phones (per flutter_gemma docs).
-  // On devices without GPU support, the plugin auto-falls-back to CPU.
   static const PreferredBackend preferredBackend = PreferredBackend.gpu;
 
-  // ── Embedding model (Gecko 110M EN, quantized) ────────────────────────
-  //
-  // For RAG (document Q&A). Lives in the same litert-community repo as
-  // our Gemma 4 mirror — public, no HF token required (verified
-  // 2026-05-21). The plugin ships an EmbeddingModel enum but its
-  // gecko110M URL is stale (404); we bypass it and pass the URL directly.
-  //
-  // 110 MB on top of Gemma 4 E2B's 1.5 GB = ~7% extra download. Worth it
-  // for on-device document retrieval.
-  static const String embeddingModelUrl =
-      'https://huggingface.co/litert-community/Gecko-110m-en/resolve/main/Gecko_1024_quant.tflite';
-
+  /// Primary embedder URLs (mirror first).
+  static const String embeddingModelUrl = '$hfMirrorHost$_embeddingModelPath';
   static const String embeddingTokenizerUrl =
-      'https://huggingface.co/litert-community/Gecko-110m-en/resolve/main/sentencepiece.model';
+      '$hfMirrorHost$_embeddingTokenizerPath';
 
-  // Embedding output dimension. Gecko 110M produces 768-dim vectors;
-  // we pass this to the vector store on first init (it auto-detects,
-  // but having it explicit makes debugging clearer).
+  /// Fallback embedder URLs (official HF).
+  static const String embeddingModelUrlFallback =
+      '$hfHost$_embeddingModelPath';
+  static const String embeddingTokenizerUrlFallback =
+      '$hfHost$_embeddingTokenizerPath';
+
+  static const List<String> embeddingModelUrlCandidates = [
+    embeddingModelUrl,
+    embeddingModelUrlFallback,
+  ];
+
+  static const List<String> embeddingTokenizerUrlCandidates = [
+    embeddingTokenizerUrl,
+    embeddingTokenizerUrlFallback,
+  ];
+
   static const int embeddingDimension = 768;
+
+  /// Human-readable sizes for progress UI.
+  static const String modelSizeLabel = '~2.4 GB';
+  static const String embedderSizeLabel = '~110 MB';
 }
