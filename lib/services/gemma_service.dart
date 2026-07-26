@@ -257,7 +257,7 @@ class GemmaService {
   ///
   /// Throws [GemmaException] on failure; transitions [embedderState] to
   /// error.
-    Future<void> installEmbedder() async {
+  Future<void> installEmbedder() async {
     if (_embedderInstallDone) return;
     if (_embedderState.value == EmbedderState.installing) return;
     if (_embedderState.value == EmbedderState.installed) {
@@ -281,10 +281,14 @@ class GemmaService {
                 .install();
             _embedderInstallDone = true;
             _embedderState.value = EmbedderState.installed;
-            debugPrint('🐾 GEMMA: embedder installed from model=$modelUrl tok=$tokUrl');
+            debugPrint(
+              '🐾 GEMMA: embedder installed from model=$modelUrl tok=$tokUrl',
+            );
             return;
           } catch (_) {
-            debugPrint('🐾 GEMMA: embedder install from ($modelUrl, $tokUrl) failed, trying next...');
+            debugPrint(
+              '🐾 GEMMA: embedder install from ($modelUrl, $tokUrl) failed, trying next...',
+            );
           }
         }
       }
@@ -304,7 +308,7 @@ class GemmaService {
     }
   }
 
-Future<fg.EmbeddingModel> getEmbedder() async {
+  Future<fg.EmbeddingModel> getEmbedder() async {
     final cached = _embedder;
     if (cached != null) return cached;
     if (_embedderState.value != EmbedderState.installed) {
@@ -368,21 +372,31 @@ Future<fg.EmbeddingModel> getEmbedder() async {
         );
       }
 
-      await fg.FlutterGemma.installModel(
-        modelType: GemmaConfig.modelType,
-        fileType: GemmaConfig.fileType,
-      ).fromNetwork(GemmaConfig.modelUrl).withProgress((progress) {
-        // `withProgress` callback fires repeatedly during download.
-        // `progress` is an int 0–100 per the modern API contract.
-        _downloadProgress.value = progress;
-      }).install();
-
-      _pluginInstallDone = true;
-      _state.value = GemmaState.installed;
+      Object? lastErr;
+      for (final url in GemmaConfig.modelUrlCandidates) {
+        try {
+          await fg.FlutterGemma.installModel(
+            modelType: GemmaConfig.modelType,
+            fileType: GemmaConfig.fileType,
+          ).fromNetwork(url).withProgress((progress) {
+            _downloadProgress.value = progress;
+          }).install();
+          _pluginInstallDone = true;
+          _state.value = GemmaState.installed;
+          debugPrint('🐾 GEMMA: installed from $url');
+          return;
+        } catch (e) {
+          lastErr = e;
+          debugPrint('🐾 GEMMA: install from $url failed, trying next...');
+        }
+      }
+      throw GemmaException(
+        'All download sources failed. Please check your network and try again.',
+        lastErr,
+      );
     } catch (e) {
       _lastError = e;
       _state.value = GemmaState.error;
-      // Re-throw as our typed exception so callers can handle it cleanly.
       throw GemmaException('Failed to install Gemma model', e);
     }
   }
