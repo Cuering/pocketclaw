@@ -425,40 +425,47 @@ class _ProgressStep extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 24),
-                  if (state == GemmaState.installing)
-                    ValueListenableBuilder<int>(
-                      valueListenable: GemmaService.instance.downloadProgress,
-                      builder: (context, progress, _) => Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          LinearProgressIndicator(
-                            value: progress > 0 ? progress / 100 : null,
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            progress > 0 ? '$progress%' : '连接中…',
-                            style: theme.textTheme.bodySmall,
-                          ),
-                        ],
-                      ),
-                    )
-                  else if (embedderState == EmbedderState.installing)
-                    ValueListenableBuilder<int>(
-                      valueListenable:
-                          GemmaService.instance.embedderDownloadProgress,
-                      builder: (context, progress, _) => Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          LinearProgressIndicator(
-                            value: progress > 0 ? progress / 100 : null,
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            progress > 0 ? '$progress%' : '连接中…',
-                            style: theme.textTheme.bodySmall,
-                          ),
-                        ],
-                      ),
+                  // Show combined progress when either model is downloading
+                  if (state == GemmaState.installing ||
+                      embedderState == EmbedderState.installing)
+                    ValueListenableBuilder<GemmaState>(
+                      valueListenable: GemmaService.instance.state,
+                      builder: (ctx, st, _) {
+                        return ValueListenableBuilder<EmbedderState>(
+                          valueListenable:
+                              GemmaService.instance.embedderState,
+                          builder: (ctx2, es, __) {
+                            final modelProg =
+                                st == GemmaState.installing
+                                    ? GemmaService.instance.downloadProgress.value
+                                    : 100;
+                            final embedProg =
+                                es == EmbedderState.installing
+                                    ? GemmaService.instance.embedderDownloadProgress.value
+                                    : 100;
+                            // Weighted average: model ~95%, embedder ~5%
+                            final combined = ((modelProg * 95 + embedProg * 5) / 100).round();
+                            return Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                LinearProgressIndicator(
+                                  value: combined > 0 ? combined / 100 : null,
+                                  minHeight: 8,
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  combined > 0
+                                      ? '$combined% · $modelSizeLabel + $embedderSizeLabel'
+                                      : '正在连接服务器…',
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: theme.colorScheme.onSurfaceVariant,
+                                  ),
+                                ),
+                              ],
+                            );
+                          },
+                        );
+                      },
                     )
                   else if (!isError)
                     const LinearProgressIndicator(),
