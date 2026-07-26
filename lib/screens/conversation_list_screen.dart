@@ -7,7 +7,7 @@ import '../services/conversation_store.dart';
 /// List of all stored conversations. Tap to switch, long-press to delete.
 ///
 /// Pops with the picked conversation (or with a sentinel Conversation
-/// having id='NEW' when the user taps "New chat").
+/// having id='NEW' when the user taps "新对话").
 class ConversationListScreen extends StatefulWidget {
   const ConversationListScreen({
     super.key,
@@ -37,20 +37,20 @@ class _ConversationListScreenState extends State<ConversationListScreen> {
     });
   }
 
-  Future<void> _confirmDelete(Conversation conv) async {
+  Future<void> _confirm删除(Conversation conv) async {
     final ok = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
-        title: const Text('Delete conversation?'),
+        title: const Text('删除对话？'),
         content: Text('"${conv.title}" will be permanently removed.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
+            child: const Text('取消'),
           ),
           FilledButton.tonal(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('Delete'),
+            child: const Text('删除'),
           ),
         ],
       ),
@@ -77,17 +77,17 @@ class _ConversationListScreenState extends State<ConversationListScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Conversations')),
+      appBar: AppBar(title: const Text('对话列表')),
       body: Column(
         children: [
           ListTile(
             leading: const Icon(Icons.add),
-            title: const Text('New chat'),
+            title: const Text('新对话'),
             onTap: () {
               // Sentinel: empty Conversation with id='NEW' signals "start new"
               Navigator.pop(
                 context,
-                Conversation(id: 'NEW', title: 'New chat'),
+                Conversation(id: 'NEW', title: '新对话'),
               );
             },
           ),
@@ -105,7 +105,7 @@ class _ConversationListScreenState extends State<ConversationListScreen> {
                     child: Padding(
                       padding: const EdgeInsets.all(32),
                       child: Text(
-                        'No conversations yet. Start a chat from the home screen.',
+                        '还没有对话。从主页开始聊天吧。',
                         textAlign: TextAlign.center,
                         style: Theme.of(context).textTheme.bodyMedium,
                       ),
@@ -134,7 +134,7 @@ class _ConversationListScreenState extends State<ConversationListScreen> {
                       ),
                       selected: selected,
                       onTap: () => Navigator.pop(context, c),
-                      onLongPress: () => _confirmDelete(c),
+                      onLongPress: () => _confirm删除(c),
                     );
                   },
                 );
