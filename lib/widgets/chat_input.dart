@@ -190,7 +190,7 @@ class _ChatInputState extends State<ChatInput>
                   name: widget.attachedImageName ?? 'image',
                   busy: widget.preparingAttachment,
                   subtitle: widget.preparingAttachment
-                      ? '正在准备图片上下文…'
+                      ? 'Preparing image context...'
                       : null,
                   onRemove: widget.onClearAttachment,
                 ),
@@ -205,7 +205,7 @@ class _ChatInputState extends State<ChatInput>
                 children: [
                   _InputIconButton(
                     icon: Icons.add_photo_alternate_outlined,
-                    tooltip: '附加图片',
+                    tooltip: 'Attach image',
                     onPressed: widget.enabled && !widget.preparingAttachment
                         ? widget.onAttachImage
                         : null,
@@ -213,7 +213,7 @@ class _ChatInputState extends State<ChatInput>
                   const SizedBox(width: 8),
                   _InputIconButton(
                     icon: Icons.description_outlined,
-                    tooltip: '附加文档',
+                    tooltip: 'Attach document',
                     onPressed: widget.enabled && !widget.preparingAttachment
                         ? widget.onAttachDocument
                         : null,
@@ -229,10 +229,10 @@ class _ChatInputState extends State<ChatInput>
                       textInputAction: TextInputAction.newline,
                       decoration: InputDecoration(
                         hintText: _isListening
-                            ? '正在听…请说话！'
+                            ? 'Listening... Speak now!'
                             : widget.enabled
-                            ? '随便问爪爪…'
-                            : widget.disabledHint ?? '爪爪在想…',
+                            ? 'Ask Claw anything…'
+                            : widget.disabledHint ?? 'Claw is thinking…',
                         contentPadding: const EdgeInsets.symmetric(
                           horizontal: 14,
                           vertical: 10,
@@ -381,7 +381,7 @@ class _SendButton extends StatelessWidget {
       ),
       child: IconButton(
         icon: const Icon(Icons.arrow_upward),
-        tooltip: '发送',
+        tooltip: 'Send',
         onPressed: onPressed,
         color: onPressed == null ? PocketClawTheme.muted : PocketClawTheme.ink,
       ),
