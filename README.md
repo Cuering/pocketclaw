@@ -1,5 +1,3 @@
-> **v1.1.0**：默认中文界面。Release APK 见 GitHub Releases / Actions。
-
 # PocketClaw
 
 An offline, multimodal AI assistant for Android. Chat, voice, vision, document Q&A, and device actions — all running on-device with Gemma 4 E2B. No servers, no tracking, no internet required after first-launch model download.
