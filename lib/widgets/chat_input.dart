@@ -84,7 +84,7 @@ class _ChatInputState extends State<ChatInput>
     try {
       final available = await _speechToText.initialize(
         onError: (val) => debugPrint('🐾 VOICE: STT error: $val'),
-        onStatus: (val) => debugPrint('🐾 VOICE: STT status: $val'),
+        onStatus: (val) => debugPrint('🐾 语音：STT 状态：$val'),
       );
       if (mounted) {
         setState(() => _speechEnabled = available);
@@ -205,7 +205,7 @@ class _ChatInputState extends State<ChatInput>
                 children: [
                   _InputIconButton(
                     icon: Icons.add_photo_alternate_outlined,
-                    tooltip: 'Attach image',
+                    tooltip: '附加图片',
                     onPressed: widget.enabled && !widget.preparingAttachment
                         ? widget.onAttachImage
                         : null,
@@ -213,7 +213,7 @@ class _ChatInputState extends State<ChatInput>
                   const SizedBox(width: 8),
                   _InputIconButton(
                     icon: Icons.description_outlined,
-                    tooltip: 'Attach document',
+                    tooltip: '附加文档',
                     onPressed: widget.enabled && !widget.preparingAttachment
                         ? widget.onAttachDocument
                         : null,
@@ -231,8 +231,8 @@ class _ChatInputState extends State<ChatInput>
                         hintText: _isListening
                             ? 'Listening... Speak now!'
                             : widget.enabled
-                            ? 'Ask Claw anything…'
-                            : widget.disabledHint ?? 'Claw is thinking…',
+                            ? '随便问爪爪…'
+                            : widget.disabledHint ?? '爪爪在想…',
                         contentPadding: const EdgeInsets.symmetric(
                           horizontal: 14,
                           vertical: 10,
@@ -381,7 +381,7 @@ class _SendButton extends StatelessWidget {
       ),
       child: IconButton(
         icon: const Icon(Icons.arrow_upward),
-        tooltip: 'Send',
+        tooltip: '发送',
         onPressed: onPressed,
         color: onPressed == null ? PocketClawTheme.muted : PocketClawTheme.ink,
       ),
