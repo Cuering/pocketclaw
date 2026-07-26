@@ -10,14 +10,14 @@ import '../services/workflow_engine/workflow_engine.dart';
 import '../services/workflow_engine/workflow_model.dart';
 import '../services/workflow_engine/workflow_store.dart';
 
-class 工作流Screen extends StatefulWidget {
-  const 工作流Screen({super.key});
+class WorkflowsScreen extends StatefulWidget {
+  const WorkflowsScreen({super.key});
 
   @override
-  State<工作流Screen> createState() => _工作流ScreenState();
+  State<WorkflowsScreen> createState() => _WorkflowsScreenState();
 }
 
-class _工作流ScreenState extends State<工作流Screen> {
+class _WorkflowsScreenState extends State<WorkflowsScreen> {
   bool _creating = false;
   String? _runningId;
   final TextEditingController _descController = TextEditingController();
@@ -84,7 +84,7 @@ class _工作流ScreenState extends State<工作流Screen> {
       builder: (ctx) => AlertDialog(
         backgroundColor: PocketClawTheme.bg2,
         title: Text(
-          '删除 "${workflow.name}"?',
+          'Delete "${workflow.name}"?',
           style: Theme.of(ctx).textTheme.titleMedium,
         ),
         actions: [
@@ -241,7 +241,7 @@ class _工作流ScreenState extends State<工作流Screen> {
                     itemCount: workflows.length,
                     itemBuilder: (context, i) {
                       final workflow = workflows[i];
-                      final is运行ning = _runningId == workflow.id;
+                      final isRunning = _runningId == workflow.id;
                       return Padding(
                         padding: const EdgeInsets.only(bottom: 10),
                         child: GestureDetector(
@@ -302,14 +302,14 @@ class _工作流ScreenState extends State<工作流Screen> {
                                       Text(
                                         '${workflow.stepSkillIds.length} skill${workflow.stepSkillIds.length == 1 ? '' : 's'}'
                                         ' · run ${workflow.runCount}×'
-                                        '${workflow.last运行At != null ? ' · last ran ${_formatDate(workflow.last运行At!)}' : ''}',
+                                        '${workflow.lastRunAt != null ? ' · last ran ${_formatDate(workflow.lastRunAt!)}' : ''}',
                                         style: theme.textTheme.labelSmall,
                                       ),
                                     ],
                                   ),
                                 ),
                                 const SizedBox(width: 12),
-                                is运行ning
+                                isRunning
                                     ? const SizedBox(
                                         width: 24,
                                         height: 24,
