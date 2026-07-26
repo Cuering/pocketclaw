@@ -290,7 +290,7 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('PocketClaw — Gemma 测试')),
+      appBar: AppBar(title: const Text('PocketClaw — Gemma Test')),
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -338,30 +338,30 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen>
               children: [
                 ElevatedButton(
                   onPressed: _onInstall,
-                  child: const Text('1. 安装'),
+                  child: const Text('1. Install'),
                 ),
                 ElevatedButton(
                   onPressed: _onLoad,
-                  child: const Text('2. 加载'),
+                  child: const Text('2. Load'),
                 ),
                 ElevatedButton(
                   onPressed: _onGenerate,
-                  child: const Text('3. 生成'),
+                  child: const Text('3. Generate'),
                 ),
                 ElevatedButton.icon(
                   onPressed: _onAttachImage,
                   icon: const Icon(Icons.image),
-                  label: const Text('4. 附加图片'),
+                  label: const Text('4. Attach Image'),
                 ),
                 ElevatedButton.icon(
                   onPressed: _onShowOverlay,
                   icon: const Icon(Icons.bubble_chart),
-                  label: const Text('5. 显示悬浮窗'),
+                  label: const Text('5. Show Overlay'),
                 ),
                 ElevatedButton.icon(
                   onPressed: _onHideOverlay,
                   icon: const Icon(Icons.close),
-                  label: const Text('6. 隐藏悬浮窗'),
+                  label: const Text('6. Hide Overlay'),
                 ),
               ],
             ),
@@ -400,7 +400,7 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen>
                     IconButton(
                       icon: const Icon(Icons.close),
                       onPressed: _onClearImage,
-                      tooltip: '移除图片',
+                      tooltip: 'Remove image',
                     ),
                   ],
                 ),
