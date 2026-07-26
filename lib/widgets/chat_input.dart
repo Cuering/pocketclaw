@@ -190,7 +190,7 @@ class _ChatInputState extends State<ChatInput>
                   name: widget.attachedImageName ?? 'image',
                   busy: widget.preparingAttachment,
                   subtitle: widget.preparingAttachment
-                      ? 'Preparing image context...'
+                      ? '正在准备图片上下文…'
                       : null,
                   onRemove: widget.onClearAttachment,
                 ),
@@ -229,7 +229,7 @@ class _ChatInputState extends State<ChatInput>
                       textInputAction: TextInputAction.newline,
                       decoration: InputDecoration(
                         hintText: _isListening
-                            ? 'Listening... Speak now!'
+                            ? '正在听…请说话！'
                             : widget.enabled
                             ? '随便问爪爪…'
                             : widget.disabledHint ?? '爪爪在想…',
@@ -502,8 +502,8 @@ class _DocumentAttachmentChip extends StatelessWidget {
                 ),
                 Text(
                   sectionCount == 1
-                      ? '1 section ready'
-                      : '$sectionCount sections ready',
+                      ? '1 个片段就绪'
+                      : '$sectionCount 个片段就绪',
                   style: theme.textTheme.labelSmall?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
                   ),
