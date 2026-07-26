@@ -49,7 +49,7 @@ class _WorkflowsScreenState extends State<WorkflowsScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            '✅ Workflow created: ${workflow.name} (${workflow.stepSkillIds.length} step${workflow.stepSkillIds.length == 1 ? '' : 's'})',
+            '✅ 已创建工作流：${workflow.name}（${workflow.stepSkillIds.length} 步）',
           ),
         ),
       );
@@ -57,7 +57,7 @@ class _WorkflowsScreenState extends State<WorkflowsScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            'Could not generate workflow. Create some skills first, then try again.',
+            '无法生成工作流。请先创建一些技能后再试。',
           ),
         ),
       );
@@ -75,7 +75,7 @@ class _WorkflowsScreenState extends State<WorkflowsScreen> {
     });
     ScaffoldMessenger.of(
       context,
-    ).showSnackBar(SnackBar(content: Text(task.result ?? 'Workflow complete')));
+    ).showSnackBar(SnackBar(content: Text(task.result ?? '工作流已完成')));
   }
 
   Future<void> _deleteWorkflow(WorkflowModel workflow) async {
@@ -84,18 +84,18 @@ class _WorkflowsScreenState extends State<WorkflowsScreen> {
       builder: (ctx) => AlertDialog(
         backgroundColor: PocketClawTheme.bg2,
         title: Text(
-          'Delete "${workflow.name}"?',
+          '删除「${workflow.name}」？',
           style: Theme.of(ctx).textTheme.titleMedium,
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
+            child: const Text('取消'),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
             child: Text(
-              'Delete',
+              '删除',
               style: Theme.of(ctx).textTheme.bodyMedium?.copyWith(
                     color: PocketClawTheme.error,
                   ),
@@ -131,7 +131,7 @@ class _WorkflowsScreenState extends State<WorkflowsScreen> {
         builder: (ctx, setStateInner) => AlertDialog(
           backgroundColor: PocketClawTheme.bg2,
           title: Text(
-            'Create Workflow',
+            '创建工作流',
             style: Theme.of(ctx).textTheme.titleMedium,
           ),
           content: TextField(
@@ -140,7 +140,7 @@ class _WorkflowsScreenState extends State<WorkflowsScreen> {
             maxLines: 3,
             style: Theme.of(ctx).textTheme.bodyMedium,
             decoration: InputDecoration(
-              hintText: 'Describe what the workflow should do...',
+              hintText: '描述这个工作流要做什么…',
               hintStyle: Theme.of(ctx).textTheme.bodyMedium?.copyWith(
                   color: PocketClawTheme.muted,
                 ),
@@ -152,7 +152,7 @@ class _WorkflowsScreenState extends State<WorkflowsScreen> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx),
-              child: const Text('Cancel'),
+              child: const Text('取消'),
             ),
             FilledButton(
               onPressed: _creating
@@ -166,7 +166,7 @@ class _WorkflowsScreenState extends State<WorkflowsScreen> {
                       height: 16,
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
-                  : const Text('Generate'),
+                  : const Text('生成'),
             ),
           ],
         ),
@@ -181,13 +181,13 @@ class _WorkflowsScreenState extends State<WorkflowsScreen> {
       backgroundColor: PocketClawTheme.bg,
       appBar: AppBar(
         backgroundColor: PocketClawTheme.bg,
-        title: Text('Workflows', style: theme.textTheme.headlineMedium),
+        title: Text('工作流', style: theme.textTheme.headlineMedium),
         actions: [
           IconButton(
             icon: const Icon(Icons.add),
             color: PocketClawTheme.cyan,
             onPressed: _showCreateDialog,
-            tooltip: 'Create Workflow',
+            tooltip: '创建工作流',
           ),
         ],
       ),
@@ -204,7 +204,7 @@ class _WorkflowsScreenState extends State<WorkflowsScreen> {
                   vertical: 8,
                 ),
                 child: Text(
-                  WorkflowEngine.instance.lastError ?? 'Workflow engine error',
+                  WorkflowEngine.instance.lastError ?? '工作流引擎错误',
                   style: theme.textTheme.bodyMedium?.copyWith(
                     color: PocketClawTheme.error,
                   ),
@@ -226,11 +226,11 @@ class _WorkflowsScreenState extends State<WorkflowsScreen> {
                             size: 48,
                           ),
                           const SizedBox(height: 12),
-                          Text('No workflows yet', style: theme.textTheme.bodyMedium),
+                          Text('还没有工作流', style: theme.textTheme.bodyMedium),
                           const SizedBox(height: 8),
                           FilledButton(
                             onPressed: _showCreateDialog,
-                            child: const Text('Create a Workflow'),
+                            child: const Text('创建工作流'),
                           ),
                         ],
                       ),
@@ -256,14 +256,14 @@ class _WorkflowsScreenState extends State<WorkflowsScreen> {
                                     ListTile(
                                       leading: const Icon(Icons.ios_share,
                                           color: PocketClawTheme.cyan),
-                                      title: Text('Export',
+                                      title: Text('导出',
                                           style: Theme.of(ctx).textTheme.bodyMedium),
                                       onTap: () => Navigator.pop(ctx, 'export'),
                                     ),
                                     ListTile(
                                       leading: const Icon(Icons.delete_outline,
                                           color: PocketClawTheme.error),
-                                      title: Text('Delete',
+                                      title: Text('删除',
                                           style: Theme.of(ctx).textTheme.bodyMedium),
                                       onTap: () => Navigator.pop(ctx, 'delete'),
                                     ),
@@ -300,7 +300,7 @@ class _WorkflowsScreenState extends State<WorkflowsScreen> {
                                       ],
                                       const SizedBox(height: 4),
                                       Text(
-                                        '${workflow.stepSkillIds.length} skill${workflow.stepSkillIds.length == 1 ? '' : 's'}'
+                                        '${workflow.stepSkillIds.length} 个技能'
                                         ' · run ${workflow.runCount}×'
                                         '${workflow.lastRunAt != null ? ' · last ran ${_formatDate(workflow.lastRunAt!)}' : ''}',
                                         style: theme.textTheme.labelSmall,
@@ -319,7 +319,7 @@ class _WorkflowsScreenState extends State<WorkflowsScreen> {
                                       )
                                     : FilledButton(
                                         onPressed: () => _runWorkflow(workflow),
-                                        child: const Text('Run'),
+                                        child: const Text('运行'),
                                       ),
                               ],
                             ),
