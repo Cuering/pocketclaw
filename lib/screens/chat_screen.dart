@@ -174,7 +174,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       await OverlayControllerService.instance.markDisabledFromOverlay();
       if (!mounted) return;
       setState(() {});
-      _showSnack('Overlay deactivated.');
+      _showSnack('悬浮窗已关闭。');
       return;
     }
     if (type == 'open_app') {
@@ -646,8 +646,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     if (trimmed.length < 5500) return text;
     const completeEndings = ['.', '!', '?', ')', ']', '`'];
     if (completeEndings.any(trimmed.endsWith)) return text;
-    return '$trimmed\n\nI may have hit the response limit. Send "continue" '
-        'and I will pick up from here.';
+    return '$trimmed\n\n我可能触达了回复长度上限。发送「继续」我会接着往下说。';
   }
 
   bool _looksLikeDocumentQuery(String text) {
@@ -821,7 +820,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
             _conversation
                 .messages[lastIdx] = _conversation.messages[lastIdx].copyWith(
               text:
-                  "I couldn't reach web search right now. You're probably offline, or the search service did not return usable results.",
+                  '暂时无法使用网络搜索。你可能处于离线状态，或搜索服务没有返回可用结果。',
             );
             _busy = false;
           });
@@ -954,7 +953,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       }
 
       // Auto-title if this is the first user message in a brand-new chat.
-      if (_conversation.title == 'New chat') {
+      if (_conversation.title == 'New chat' || _conversation.title == '新建聊天') {
         _conversation.title = _conversation.deriveTitleFromMessages();
       }
 
@@ -967,7 +966,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('Couldn\'t save this conversation.'),
+              content: Text('无法保存此会话。'),
               duration: Duration(seconds: 3),
             ),
           );
@@ -1064,7 +1063,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       // Persist the conversation FIRST if it has no messages yet, so
       // the document's conversationId points at something that will
       // exist when the user later reopens the chat.
-      if (_conversation.messages.isEmpty && _conversation.title == 'New chat') {
+      if (_conversation.messages.isEmpty && (_conversation.title == 'New chat' || _conversation.title == '新建聊天')) {
         _conversation.title = name;
         await ConversationStore.instance.save(_conversation);
       }
@@ -1094,7 +1093,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         ScaffoldMessenger.of(context).hideCurrentSnackBar();
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text("Claw couldn't read that file. Try a different one?"),
+            content: Text('爪爪读不了这个文件，换一个试试？'),
             duration: Duration(seconds: 3),
           ),
         );
@@ -1296,7 +1295,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     if (!mounted) return;
     setState(() {});
     if (!applied && enabled) {
-      _showSnack('Display Over Apps permission required.');
+      _showSnack('需要「显示在其他应用上层」权限。');
     }
   }
 
@@ -1306,28 +1305,25 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       if (!mounted) return;
       if (result == null) return; // cancelled
       final msg = StringBuffer(
-        'Added ${result.skillsAdded} skill'
-        '${result.skillsAdded == 1 ? '' : 's'}',
+        '已添加 ${result.skillsAdded} 个技能',
       );
       if (result.workflowsAdded > 0) {
-        msg.write(', ${result.workflowsAdded} workflow'
-            '${result.workflowsAdded == 1 ? '' : 's'}');
+        msg.write('，${result.workflowsAdded} 个工作流');
       }
       if (result.warnings.isNotEmpty) {
-        msg.write(' (${result.warnings.length} warning'
-            '${result.warnings.length == 1 ? '' : 's'})');
+        msg.write('（${result.warnings.length} 条警告）');
       }
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text(msg.toString())));
     } on FormatException {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Not a valid .pcskill file')),
+        const SnackBar(content: Text('不是有效的 .pcskill 文件')),
       );
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Couldn't import that file.")),
+        const SnackBar(content: Text('无法导入该文件。')),
       );
     }
   }
@@ -1341,14 +1337,14 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         leading: IconButton(
           icon: const Icon(Icons.menu),
           onPressed: _openConversationList,
-          tooltip: 'Conversations',
+          tooltip: '会话',
         ),
         title: Text(_conversation.title, overflow: TextOverflow.ellipsis),
         actions: [
           // IconButton(
           //   icon: const Icon(Icons.settings),
           //   onPressed: () => _scaffoldKey.currentState?.openEndDrawer(),
-          //   tooltip: 'Claw Settings',
+          //   tooltip: '爪爪设置',
           // ),
           PopupMenuButton<String>(
             onSelected: (value) async {
@@ -1375,10 +1371,10 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
               }
             },
             itemBuilder: (_) => const [
-              PopupMenuItem(value: 'clear', child: Text('New chat')),
-              PopupMenuItem(value: 'skills', child: Text('Skills')),
-              PopupMenuItem(value: 'workflows', child: Text('Workflows')),
-              PopupMenuItem(value: 'import_skill', child: Text('Import skill…')),
+              PopupMenuItem(value: 'clear', child: Text('新建聊天')),
+              PopupMenuItem(value: 'skills', child: Text('技能')),
+              PopupMenuItem(value: 'workflows', child: Text('工作流')),
+              PopupMenuItem(value: 'import_skill', child: Text('导入技能…')),
             ],
           ),
         ],
@@ -1425,12 +1421,12 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                           if (state == GemmaState.error)
                             TextButton(
                               onPressed: _retrySetup,
-                              child: const Text('Retry'),
+                              child: const Text('重试'),
                             ),
                           if (state == GemmaState.notInstalled)
                             TextButton(
                               onPressed: _retrySetup,
-                              child: const Text('Set up'),
+                              child: const Text('开始设置'),
                             ),
                         ],
                       ),
@@ -1477,7 +1473,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                               state == EmbedderState.notInstalled)
                             TextButton(
                               onPressed: _retrySetup,
-                              child: const Text('Retry'),
+                              child: const Text('重试'),
                             ),
                         ],
                       ),
@@ -1588,7 +1584,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       case EmbedderState.installing:
         return '$_indexingStatus...';
       case EmbedderState.error:
-        return 'Document understanding setup failed. Retry to finish setup.';
+        return '文档理解设置失败，请重试以完成设置。';
       case EmbedderState.installed:
         return '';
     }
@@ -1641,7 +1637,7 @@ class _EmptyState extends StatelessWidget {
             Text('随便问爪爪', style: theme.textTheme.titleLarge),
             const SizedBox(height: 8),
             Text(
-              'Attach a screenshot, paste text, or just type. Everything runs on-device.',
+              '附加截图、粘贴文本，或直接输入。全部在设备本地运行。',
               textAlign: TextAlign.center,
               style: theme.textTheme.bodyMedium?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
@@ -1689,7 +1685,7 @@ class _OverlayPreferenceCard extends StatelessWidget {
                     Text(
                       enabled
                           ? 'PocketClaw 在后台时生效。'
-                          : 'Off. Turn on for the floating assistant.',
+                          : '已关闭。开启后可使用悬浮助手。',
                       style: theme.textTheme.labelSmall,
                     ),
                   ],
@@ -1823,7 +1819,7 @@ class _DocumentPreviewSheetState extends State<_DocumentPreviewSheet> {
                           overflow: TextOverflow.ellipsis,
                         ),
                         Text(
-                          '${widget.document.chunkCount} sections',
+                          '${widget.document.chunkCount} 个片段',
                           style: theme.textTheme.bodySmall?.copyWith(
                             color: theme.colorScheme.onSurfaceVariant,
                           ),
@@ -1852,7 +1848,7 @@ class _DocumentPreviewSheetState extends State<_DocumentPreviewSheet> {
                           children: [
                             const CircularProgressIndicator(),
                             const SizedBox(height: 12),
-                            Text('$_previewStatus...'),
+                            Text('$_previewStatus…'),
                           ],
                         ),
                       ),
@@ -1863,7 +1859,7 @@ class _DocumentPreviewSheetState extends State<_DocumentPreviewSheet> {
                     return Padding(
                       padding: const EdgeInsets.all(24),
                       child: Text(
-                        "Couldn't load the document content.",
+                        '无法加载文档内容。',
                         style: theme.textTheme.bodyMedium,
                       ),
                     );
@@ -1992,7 +1988,7 @@ class _SettingsDrawerState extends State<_SettingsDrawer> with WidgetsBindingObs
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
-                    'CLAW SETTINGS',
+                    '爪爪设置',
                     style: theme.textTheme.titleLarge?.copyWith(
                       fontWeight: FontWeight.w900,
                       color: PocketClawTheme.cyan,
@@ -2010,7 +2006,7 @@ class _SettingsDrawerState extends State<_SettingsDrawer> with WidgetsBindingObs
                   padding: EdgeInsets.zero,
                   children: [
                     Text(
-                      'SYSTEM PERMISSIONS',
+                      '系统权限',
                       style: theme.textTheme.labelMedium?.copyWith(
                         color: PocketClawTheme.purple,
                         fontWeight: FontWeight.w900,
@@ -2060,7 +2056,7 @@ class _SettingsDrawerState extends State<_SettingsDrawer> with WidgetsBindingObs
                               Icon(Icons.settings, size: 16, color: PocketClawTheme.cyan),
                               SizedBox(width: 8),
                               Text(
-                                'MANAGE IN SYSTEM SETTINGS',
+                                '在系统设置中管理',
                                 style: TextStyle(
                                   fontWeight: FontWeight.w900,
                                   fontSize: 11,
@@ -2082,7 +2078,7 @@ class _SettingsDrawerState extends State<_SettingsDrawer> with WidgetsBindingObs
                     ),
                     const SizedBox(height: 24),
                     Text(
-                      'VOICE CONTROL',
+                      '语音控制',
                       style: theme.textTheme.labelMedium?.copyWith(
                         color: PocketClawTheme.purple,
                         fontWeight: FontWeight.w900,
@@ -2113,7 +2109,7 @@ class _SettingsDrawerState extends State<_SettingsDrawer> with WidgetsBindingObs
                     ),
                     const SizedBox(height: 24),
                     Text(
-                      'PICOVOICE PORCUPINE KEY',
+                      'Picovoice Porcupine 密钥',
                       style: theme.textTheme.labelMedium?.copyWith(
                         color: PocketClawTheme.purple,
                         fontWeight: FontWeight.w900,
@@ -2121,7 +2117,7 @@ class _SettingsDrawerState extends State<_SettingsDrawer> with WidgetsBindingObs
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      'Optional. Enter a key for hardware-level wake phrase parsing, or leave blank to use the local STT continuous listener fallback.',
+                      '可选。填写密钥以启用硬件级唤醒词解析；留空则使用本地持续语音识别作为回退。',
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: theme.colorScheme.onSurfaceVariant,
                       ),
