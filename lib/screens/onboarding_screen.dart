@@ -15,7 +15,7 @@ import '../services/primitive_engine/primitive_engine.dart';
 ///   2. Download prompt (1.5 GB explainer, single tap to start)
 ///   3. Download/loading progress (in-flight)
 ///
-/// Setup starts only after the user taps "下载爪爪". Onboarding does not
+/// Setup starts only after the user taps "Download Claw". Onboarding does not
 /// complete until both the chat model and the embedding model are ready.
 class OnboardingScreen extends StatefulWidget {
   const OnboardingScreen({super.key, required this.onDone});
@@ -188,30 +188,30 @@ class _WelcomeStep extends StatelessWidget {
           ),
           const SizedBox(height: 16),
           Text(
-            '认识爪爪',
+            'Meet Claw',
             style: theme.textTheme.headlineMedium?.copyWith(
               fontWeight: FontWeight.w600,
             ),
           ),
           const SizedBox(height: 8),
           Text(
-            '你的私有端侧 AI 助理。'
-            '一切都留在手机上——无服务器、无追踪，'
-            '设置完成后无需联网。',
+            'Your private, on-device AI assistant. '
+            'Everything stays on your phone — no servers, no tracking, '
+            'no internet required after setup.',
             style: theme.textTheme.bodyLarge?.copyWith(
               color: theme.colorScheme.onSurfaceVariant,
             ),
           ),
           const SizedBox(height: 32),
           Text(
-            '希望爪爪怎么称呼你？',
+            'What should Claw call you?',
             style: theme.textTheme.titleMedium,
           ),
           const SizedBox(height: 12),
           TextField(
             controller: nameController,
             autofocus: true,
-            decoration: const InputDecoration(hintText: '你的名字（可选）'),
+            decoration: const InputDecoration(hintText: 'Your name (optional)'),
             onSubmitted: (_) => onNext(),
           ),
           const Spacer(),
@@ -222,7 +222,7 @@ class _WelcomeStep extends StatelessWidget {
               style: FilledButton.styleFrom(
                 padding: const EdgeInsets.symmetric(vertical: 14),
               ),
-              child: const Text('继续'),
+              child: const Text('Continue'),
             ),
           ),
           const SizedBox(height: 16),
@@ -264,7 +264,7 @@ class _DownloadExplainerStep extends StatelessWidget {
           ),
           const SizedBox(height: 16),
           Text(
-            "开始设置爪爪",
+            "Let's set up Claw",
             style: theme.textTheme.headlineMedium?.copyWith(
               fontWeight: FontWeight.w600,
             ),
@@ -272,26 +272,26 @@ class _DownloadExplainerStep extends StatelessWidget {
           const SizedBox(height: 12),
           _Bullet(
             icon: Icons.download_outlined,
-            title: '一次性下载',
+            title: 'One-time download',
             body:
-                '爪爪由 Gemma 4（Google DeepMind 开源模型）驱动。模型约 1.5 GB，下载一次后即可'
-                '完全离线运行。数据不会离开你的手机。',
+                'Claw is powered by Gemma 4 — Google DeepMind’s open model. The brain is about 1.5 GB, downloads once, then runs '
+                'entirely offline. No data leaves your phone.',
           ),
           const SizedBox(height: 12),
           _Bullet(
             icon: Icons.wifi_outlined,
-            title: '尽量使用 Wi‑Fi',
+            title: 'Use Wi-Fi if you can',
             body:
-                '移动网络也可以，但会消耗流量。连接中断时会'
-                '暂停。',
+                'Cellular works but uses your data. We pause if the '
+                'connection drops.',
           ),
           const SizedBox(height: 12),
           _Bullet(
             icon: Icons.lock_outline,
-            title: '天生隐私',
+            title: 'Private by design',
             body:
-                '对话只保存在本机。不会'
-                '发送到服务器。',
+                'Your conversations stay on this device. Nothing is '
+                'sent to a server.',
           ),
           const Spacer(),
           SizedBox(
@@ -301,7 +301,7 @@ class _DownloadExplainerStep extends StatelessWidget {
               style: FilledButton.styleFrom(
                 padding: const EdgeInsets.symmetric(vertical: 14),
               ),
-              child: const Text('下载爪爪'),
+              child: const Text('Download Claw'),
             ),
           ),
           const SizedBox(height: 16),
@@ -410,7 +410,7 @@ class _ProgressStep extends StatelessWidget {
                     ),
                   const SizedBox(height: 16),
                   Text(
-                    isError ? '出了点问题' : '$status...',
+                    isError ? 'Something went wrong' : '$status...',
                     style: theme.textTheme.headlineSmall?.copyWith(
                       fontWeight: FontWeight.w600,
                     ),
@@ -418,7 +418,7 @@ class _ProgressStep extends StatelessWidget {
                   const SizedBox(height: 12),
                   Text(
                     isError
-                        ? "设置未能完成。请检查网络后重试。"
+                        ? "Couldn't finish setting up. Check your connection and try again."
                         : _subtitleFor(state),
                     style: theme.textTheme.bodyMedium?.copyWith(
                       color: theme.colorScheme.onSurfaceVariant,
@@ -436,7 +436,7 @@ class _ProgressStep extends StatelessWidget {
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            progress > 0 ? '$progress%' : '连接中…',
+                            progress > 0 ? '$progress%' : 'Connecting...',
                             style: theme.textTheme.bodySmall,
                           ),
                         ],
@@ -454,7 +454,7 @@ class _ProgressStep extends StatelessWidget {
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            progress > 0 ? '$progress%' : '连接中…',
+                            progress > 0 ? '$progress%' : 'Connecting...',
                             style: theme.textTheme.bodySmall,
                           ),
                         ],
@@ -471,7 +471,7 @@ class _ProgressStep extends StatelessWidget {
                         style: FilledButton.styleFrom(
                           padding: const EdgeInsets.symmetric(vertical: 14),
                         ),
-                        child: const Text('重试'),
+                        child: const Text('Retry'),
                       ),
                     ),
                   const SizedBox(height: 16),
@@ -488,21 +488,21 @@ class _ProgressStep extends StatelessWidget {
     final embedder = GemmaService.instance.embedderState.value;
     switch (state) {
       case GemmaState.installing:
-        return "正在设置爪爪（Gemma 4 驱动）。稍等片刻…";
+        return "Setting up Claw — powered by Gemma 4. This takes a moment…";
       case GemmaState.loading:
       case GemmaState.installed:
         if (embedder == EmbedderState.installing) {
-          return "快好了。正在配置文档理解能力…";
+          return "Almost ready. Setting things up so Claw can read documents too…";
         }
-        return '快好了。再等几秒…';
+        return 'Almost ready. Just a few seconds…';
       case GemmaState.ready:
       case GemmaState.generating:
         if (embedder == EmbedderState.installing) {
-          return '马上完成——正在收尾设置…';
+          return 'Almost done — finishing the last bit of setup…';
         }
-        return '点按开始聊天。';
+        return 'Tap to start chatting.';
       default:
-        return '正在设置…';
+        return 'Setting things up…';
     }
   }
 }
@@ -586,14 +586,14 @@ class _PermissionsStepState extends State<_PermissionsStep>
         children: [
           const Spacer(),
           Text(
-            '权限',
+            'Permissions',
             style: theme.textTheme.headlineMedium?.copyWith(
               fontWeight: FontWeight.w600,
             ),
           ),
           const SizedBox(height: 8),
           Text(
-            'PocketClaw 需要若干权限才能原生工作。可先跳过，之后再开启。',
+            'PocketClaw requires a few permissions to function natively. You can skip any and enable them later.',
             style: theme.textTheme.bodyMedium?.copyWith(
               color: theme.colorScheme.onSurfaceVariant,
             ),
@@ -601,40 +601,40 @@ class _PermissionsStepState extends State<_PermissionsStep>
           const SizedBox(height: 24),
           _PermissionRow(
             icon: Icons.open_in_new,
-            title: '显示在其他应用上层',
-            description: '绘制悬浮气泡。',
+            title: 'Display Over Apps',
+            description: 'Draw the floating bubble overlay.',
             granted: _overlayGranted,
             onGrant: _grantOverlay,
           ),
           const SizedBox(height: 12),
           _PermissionRow(
             icon: Icons.mic_none,
-            title: '麦克风',
-            description: '用于聊天内语音输入。',
+            title: 'Microphone',
+            description: 'For voice dictation inside the chat.',
             granted: _micGranted,
             onGrant: _grantSystem,
           ),
           const SizedBox(height: 12),
           _PermissionRow(
             icon: Icons.accessibility_new,
-            title: '无障碍',
-            description: '让爪爪点击、输入并读取屏幕以运行技能。',
+            title: 'Accessibility',
+            description: 'Lets Claw tap, type, and read the screen to run skills.',
             granted: _accessibilityGranted,
             onGrant: _grantAccessibility,
           ),
           // const SizedBox(height: 12),
           // _PermissionRow(
           //   icon: Icons.camera_alt_outlined,
-          //   title: '相机与视觉',
-          //   description: '用于截图与视觉分析。',
+          //   title: 'Camera & Vision',
+          //   description: 'For screenshot and vision analysis.',
           //   granted: _cameraGranted,
           //   onGrant: _grantSystem,
           // ),
           // const SizedBox(height: 12),
           // _PermissionRow(
           //   icon: Icons.notifications_none,
-          //   title: '通知',
-          //   description: '显示后台辅助通知。',
+          //   title: 'Notifications',
+          //   description: 'Draw background helper notification.',
           //   granted: _notificationGranted,
           //   onGrant: _grantSystem,
           // ),
@@ -646,7 +646,7 @@ class _PermissionsStepState extends State<_PermissionsStep>
               style: FilledButton.styleFrom(
                 padding: const EdgeInsets.symmetric(vertical: 14),
               ),
-              child: const Text('继续'),
+              child: const Text('Continue'),
             ),
           ),
           const SizedBox(height: 16),
@@ -717,7 +717,7 @@ class _PermissionRow extends StatelessWidget {
               disabledForegroundColor: PocketClawTheme.mint,
             ),
             child: Text(
-              granted ? '已开启' : '授权',
+              granted ? 'Active' : 'Grant',
               style: TextStyle(
                 fontWeight: FontWeight.w900,
                 color: granted ? PocketClawTheme.mint : PocketClawTheme.cyan,
