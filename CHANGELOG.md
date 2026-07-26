@@ -1,3 +1,9 @@
+## 1.1.0 — 2026-07-26
+
+- 默认中文界面（引导 / 聊天 / 技能 / 工作流 / 悬浮窗）
+- Android 无障碍说明中文
+- 版本号 1.1.0+2
+
 # PocketClaw — Changelog
 
 > Append-only. One entry per shipped unit of work. Format: `## YYYY-MM-DD — What shipped`
