@@ -41,16 +41,16 @@ class _ConversationListScreenState extends State<ConversationListScreen> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
-        title: const Text('Delete conversation?'),
-        content: Text('"${conv.title}" will be permanently removed.'),
+        title: const Text('删除会话？'),
+        content: Text('「${conv.title}」将被永久删除。'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
+            child: const Text('取消'),
           ),
           FilledButton.tonal(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('Delete'),
+            child: const Text('删除'),
           ),
         ],
       ),
@@ -77,17 +77,17 @@ class _ConversationListScreenState extends State<ConversationListScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Conversations')),
+      appBar: AppBar(title: const Text('会话')),
       body: Column(
         children: [
           ListTile(
             leading: const Icon(Icons.add),
-            title: const Text('New chat'),
+            title: const Text('新建聊天'),
             onTap: () {
               // Sentinel: empty Conversation with id='NEW' signals "start new"
               Navigator.pop(
                 context,
-                Conversation(id: 'NEW', title: 'New chat'),
+                Conversation(id: 'NEW', title: '新建聊天'),
               );
             },
           ),
@@ -105,7 +105,7 @@ class _ConversationListScreenState extends State<ConversationListScreen> {
                     child: Padding(
                       padding: const EdgeInsets.all(32),
                       child: Text(
-                        'No conversations yet. Start a chat from the home screen.',
+                        '暂无会话。请从首页开始聊天。',
                         textAlign: TextAlign.center,
                         style: Theme.of(context).textTheme.bodyMedium,
                       ),
