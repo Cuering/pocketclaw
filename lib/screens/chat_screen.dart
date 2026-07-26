@@ -227,7 +227,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Couldn\'t open image picker.'),
+            content: Text('无法打开图片选择器。'),
             duration: Duration(seconds: 3),
           ),
         );
@@ -250,7 +250,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       if (bytes == null) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text("Couldn't read that file."),
+            content: Text("无法读取该文件。"),
             duration: Duration(seconds: 3),
           ),
         );
@@ -269,7 +269,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       }
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Supported documents: md, pdf, txt.'),
+          content: Text('支持的文档：md、pdf、txt。'),
           duration: Duration(seconds: 3),
         ),
       );
@@ -278,7 +278,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text("Couldn't open the file picker."),
+            content: Text("无法打开文件选择器。"),
             duration: Duration(seconds: 3),
           ),
         );
@@ -797,7 +797,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           _lastFailedImageSummary = null;
         });
       }
-      if (_conversation.title == 'New chat') {
+      if (_conversation.title == '新对话') {
         _conversation.title = _conversation.deriveTitleFromMessages();
       }
       try {
@@ -1002,7 +1002,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     if (GemmaService.instance.embedderState.value != EmbedderState.installed) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text("Claw is still getting ready. Just a moment…"),
+          content: Text("爪爪还在准备中。稍等…"),
           duration: Duration(seconds: 3),
         ),
       );
@@ -1024,7 +1024,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text("Claw couldn't read that file. Try a different one?"),
+          content: Text("爪爪读不了这个文件。换一个试试？"),
           duration: Duration(seconds: 3),
         ),
       );
@@ -1034,7 +1034,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     if (text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('That file looks empty.'),
+          content: Text('这个文件看起来是空的。'),
           duration: Duration(seconds: 3),
         ),
       );
@@ -1044,7 +1044,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'That document is too large after extraction. Keep it under '
+            '文档提取后过大。请控制在 '
             '${_maxExtractedDocumentChars ~/ 1000}k characters.',
           ),
           duration: const Duration(seconds: 4),
@@ -1566,7 +1566,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   String _bannerForState(GemmaState state) {
     switch (state) {
       case GemmaState.notInstalled:
-        return 'Claw needs to finish setup before you can chat.';
+        return '需要完成设置后才能聊天。';
       case GemmaState.installing:
         return '$_thinkingStatus...';
       case GemmaState.installed:
@@ -1574,7 +1574,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       case GemmaState.loading:
         return '$_thinkingStatus...';
       case GemmaState.error:
-        return 'Couldn\'t start Claw. Please try again.';
+        return '无法启动爪爪。请重试。';
       case GemmaState.ready:
       case GemmaState.generating:
         return '';
@@ -1584,7 +1584,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   String _bannerForEmbedderState(EmbedderState state) {
     switch (state) {
       case EmbedderState.notInstalled:
-        return 'Claw needs document understanding setup before you can chat.';
+        return '需要完成文档理解设置后才能聊天。';
       case EmbedderState.installing:
         return '$_indexingStatus...';
       case EmbedderState.error:
@@ -1638,7 +1638,7 @@ class _EmptyState extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 16),
-            Text('Ask Claw anything', style: theme.textTheme.titleLarge),
+            Text('随便问爪爪', style: theme.textTheme.titleLarge),
             const SizedBox(height: 8),
             Text(
               'Attach a screenshot, paste text, or just type. Everything runs on-device.',
@@ -1684,11 +1684,11 @@ class _OverlayPreferenceCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Overlay', style: theme.textTheme.titleSmall),
+                    Text('悬浮窗', style: theme.textTheme.titleSmall),
                     const SizedBox(height: 2),
                     Text(
                       enabled
-                          ? 'Active when PocketClaw is in background.'
+                          ? 'PocketClaw 在后台时生效。'
                           : 'Off. Turn on for the floating assistant.',
                       style: theme.textTheme.labelSmall,
                     ),
@@ -2019,25 +2019,25 @@ class _SettingsDrawerState extends State<_SettingsDrawer> with WidgetsBindingObs
                     const SizedBox(height: 10),
                     _PermissionItem(
                       icon: Icons.open_in_new,
-                      title: 'Display Over Apps',
+                      title: '显示在其他应用上层',
                       granted: _overlayGranted,
                       onGrant: _grantOverlay,
                     ),
                     _PermissionItem(
                       icon: Icons.mic_none,
-                      title: 'Microphone',
+                      title: '麦克风',
                       granted: _micGranted,
                       onGrant: _grantSystem,
                     ),
                     _PermissionItem(
                       icon: Icons.camera_alt_outlined,
-                      title: 'Camera & Vision',
+                      title: '相机与视觉',
                       granted: _cameraGranted,
                       onGrant: _grantSystem,
                     ),
                     _PermissionItem(
                       icon: Icons.notifications_none,
-                      title: 'Notifications',
+                      title: '通知',
                       granted: _notificationGranted,
                       onGrant: _grantSystem,
                     ),
@@ -2074,7 +2074,7 @@ class _SettingsDrawerState extends State<_SettingsDrawer> with WidgetsBindingObs
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      'Android security rules require permission removal / revocation to be done manually via system settings. Tap above to open settings and revoke permissions.',
+                      '根据 Android 安全规则，撤销权限需在系统设置中手动完成。点上方打开设置。',
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: theme.colorScheme.onSurfaceVariant,
                         fontSize: 9,
@@ -2090,8 +2090,8 @@ class _SettingsDrawerState extends State<_SettingsDrawer> with WidgetsBindingObs
                     ),
                     const SizedBox(height: 10),
                     _SwitchSetting(
-                      title: '"Hey PC" Wake Word',
-                      subtitle: 'Continuous background listening.',
+                      title: '「嘿 PC」唤醒词',
+                      subtitle: '持续后台聆听。',
                       value: prefs.continuousListening,
                       onChanged: (val) async {
                         await PrefsService.instance.update(
@@ -2101,8 +2101,8 @@ class _SettingsDrawerState extends State<_SettingsDrawer> with WidgetsBindingObs
                       },
                     ),
                     _SwitchSetting(
-                      title: 'Keep Screen Awake',
-                      subtitle: 'Acquire Wakelock when listening.',
+                      title: '保持屏幕常亮',
+                      subtitle: '聆听时获取唤醒锁。',
                       value: prefs.keepScreenAwake,
                       onChanged: (val) async {
                         await PrefsService.instance.update(
@@ -2130,7 +2130,7 @@ class _SettingsDrawerState extends State<_SettingsDrawer> with WidgetsBindingObs
                     TextField(
                       controller: _keyController,
                       decoration: const InputDecoration(
-                        hintText: 'Porcupine AccessKey...',
+                        hintText: 'Porcupine AccessKey…',
                         contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                       ),
                       onChanged: _saveKey,
