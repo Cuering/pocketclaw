@@ -40,11 +40,11 @@ class _SkillsScreenState extends State<SkillsScreen> {
       _descController.clear();
       Navigator.of(context).pop();
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('✅ Skill created: ${skill.name}')),
+        SnackBar(content: Text('✅ 已创建技能：${skill.name}')),
       );
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not generate skill. Try a clearer description.')),
+        const SnackBar(content: Text('无法生成技能，请用更清晰的描述再试。')),
       );
     }
   }
@@ -64,16 +64,16 @@ class _SkillsScreenState extends State<SkillsScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: PocketClawTheme.bg2,
-        title: Text('Delete "${skill.name}"?',
+        title: Text('删除「${skill.name}」？',
             style: Theme.of(ctx).textTheme.titleMedium),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
+            child: const Text('取消'),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text('Delete',
+            child: Text('删除',
                 style: TextStyle(color: PocketClawTheme.error)),
           ),
         ],
@@ -99,7 +99,7 @@ class _SkillsScreenState extends State<SkillsScreen> {
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setStateInner) => AlertDialog(
           backgroundColor: PocketClawTheme.bg2,
-          title: Text('Create Skill',
+          title: Text('创建技能',
               style: Theme.of(ctx).textTheme.titleMedium),
           content: TextField(
             controller: _descController,
@@ -107,7 +107,7 @@ class _SkillsScreenState extends State<SkillsScreen> {
             maxLines: 3,
             style: Theme.of(ctx).textTheme.bodyMedium,
             decoration: InputDecoration(
-              hintText: 'Describe what the skill should do...',
+              hintText: '描述这个技能要做什么…',
               hintStyle: TextStyle(color: PocketClawTheme.muted),
               border: OutlineInputBorder(
                 borderSide: BorderSide(color: PocketClawTheme.cyan, width: 2),
@@ -117,7 +117,7 @@ class _SkillsScreenState extends State<SkillsScreen> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx),
-              child: const Text('Cancel'),
+              child: const Text('取消'),
             ),
             FilledButton(
               onPressed: _creating
@@ -131,7 +131,7 @@ class _SkillsScreenState extends State<SkillsScreen> {
                       height: 16,
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
-                  : const Text('Generate'),
+                  : const Text('生成'),
             ),
           ],
         ),
@@ -146,13 +146,13 @@ class _SkillsScreenState extends State<SkillsScreen> {
       backgroundColor: PocketClawTheme.bg,
       appBar: AppBar(
         backgroundColor: PocketClawTheme.bg,
-        title: Text('Skills', style: theme.textTheme.headlineMedium),
+        title: Text('技能', style: theme.textTheme.headlineMedium),
         actions: [
           IconButton(
             icon: const Icon(Icons.add),
             color: PocketClawTheme.cyan,
             onPressed: _showCreateDialog,
-            tooltip: 'Create Skill',
+            tooltip: '创建技能',
           ),
         ],
       ),
@@ -168,12 +168,12 @@ class _SkillsScreenState extends State<SkillsScreen> {
                   Icon(Icons.auto_awesome_outlined,
                       color: PocketClawTheme.muted, size: 48),
                   const SizedBox(height: 12),
-                  Text('No skills yet',
+                  Text('还没有技能',
                       style: theme.textTheme.bodyMedium),
                   const SizedBox(height: 8),
                   FilledButton(
                     onPressed: _showCreateDialog,
-                    child: const Text('Create a Skill'),
+                    child: const Text('创建技能'),
                   ),
                 ],
               ),
@@ -199,14 +199,14 @@ class _SkillsScreenState extends State<SkillsScreen> {
                             ListTile(
                               leading: const Icon(Icons.ios_share,
                                   color: PocketClawTheme.cyan),
-                              title: Text('Export',
+                              title: Text('导出',
                                   style: Theme.of(ctx).textTheme.bodyMedium),
                               onTap: () => Navigator.pop(ctx, 'export'),
                             ),
                             ListTile(
                               leading: const Icon(Icons.delete_outline,
                                   color: PocketClawTheme.error),
-                              title: Text('Delete',
+                              title: Text('删除',
                                   style: Theme.of(ctx).textTheme.bodyMedium),
                               onTap: () => Navigator.pop(ctx, 'delete'),
                             ),
@@ -239,8 +239,8 @@ class _SkillsScreenState extends State<SkillsScreen> {
                               ],
                               const SizedBox(height: 4),
                               Text(
-                                '${skill.steps.length} step${skill.steps.length == 1 ? '' : 's'}'
-                                ' · used ${skill.useCount}×',
+                                '${skill.steps.length} 步'
+                                ' · 已用 ${skill.useCount} 次',
                                 style: theme.textTheme.labelSmall,
                               ),
                             ],
@@ -255,7 +255,7 @@ class _SkillsScreenState extends State<SkillsScreen> {
                               )
                             : FilledButton(
                                 onPressed: () => _runSkill(skill),
-                                child: const Text('Run'),
+                                child: const Text('运行'),
                               ),
                       ],
                     ),
