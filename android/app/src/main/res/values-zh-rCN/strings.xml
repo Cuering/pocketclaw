@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">PocketClaw</string>
+    <string name="accessibility_service_description">
+        PocketClaw 使用无障碍服务读取屏幕并代你执行操作。数据不会离开本机。
+    </string>
+</resources>
