@@ -6,6 +6,7 @@ import '../core/status_words.dart';
 import '../models/user_prefs.dart';
 import '../services/device_actions_service.dart';
 import '../services/gemma_service.dart';
+import '../core/constants/gemma_config.dart';
 import '../services/overlay_controller_service.dart';
 import '../services/prefs_service.dart';
 import '../services/primitive_engine/primitive_engine.dart';
