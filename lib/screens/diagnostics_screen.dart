@@ -13,7 +13,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../services/gemma_service.dart';
 
-// Shared port name used by both isolates to find each other through
+// 分享d port name used by both isolates to find each other through
 // IsolateNameServer. Mirrors the constant in main.dart.
 const String kMainPortName = 'pocketclaw_main_port';
 
@@ -57,7 +57,7 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen>
   String? _imageName;
 
   // ReceivePort for messages from the overlay isolate. We register its
-  // SendPort with IsolateNameServer so the overlay can look it up by name
+  // 发送Port with IsolateNameServer so the overlay can look it up by name
   // and send messages directly. This bypasses the broken shareData bridge
   // in flutter_overlay_window 0.5.0 (issue #22 in the plugin's repo).
   ReceivePort? _mainReceivePort;
@@ -77,9 +77,9 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen>
     // Register ourselves to receive app lifecycle callbacks
     // (didChangeAppLifecycleState below).
     WidgetsBinding.instance.addObserver(this);
-    // Set up the IsolateNameServer port for receiving overlay events.
+    // 去设置 the IsolateNameServer port for receiving overlay events.
     // 1. Create a new ReceivePort (it's a Stream<dynamic> of messages).
-    // 2. Register its SendPort with a known name so the overlay can find it.
+    // 2. Register its 发送Port with a known name so the overlay can find it.
     // 3. Listen for messages and dispatch to our handler.
     //
     // We unregister any previous binding first because hot restart can leave
@@ -95,7 +95,7 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen>
 
     _mainPortSubscription = _mainReceivePort!.listen((message) {
       debugPrint('🐾 MAIN: received via ReceivePort: $message');
-      _onOverlayEvent(message);
+      _on悬浮窗Event(message);
     });
   }
 
@@ -105,9 +105,9 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen>
   // #1 cause of Flutter memory leaks.
   @override
   void dispose() {
-    // Cancel subscriptions first (no more events get processed).
+    // 取消 subscriptions first (no more events get processed).
     _mainPortSubscription?.cancel();
-    // Close the ReceivePort to release native resources.
+    // 关闭 the ReceivePort to release native resources.
     _mainReceivePort?.close();
     // Remove the named registration so a fresh restart won't see a stale port.
     IsolateNameServer.removePortNameMapping(kMainPortName);
@@ -150,7 +150,7 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen>
     }
   }
 
-  Future<void> _onGenerate() async {
+  Future<void> _on生成() async {
     final prompt = _promptController.text.trim();
     if (prompt.isEmpty) {
       _setResponse('Type a prompt first.');
@@ -194,7 +194,7 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen>
         });
       }
     } catch (e) {
-      _setResponse('Generate failed: $e');
+      _setResponse('生成 failed: $e');
     }
   }
 
@@ -253,21 +253,21 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen>
   // Show the floating overlay bubble. First time: requests permission,
   // which opens Android's "Display over other apps" settings page. After
   // the user toggles us on, they have to come back and tap this again.
-  Future<void> _onShowOverlay() async {
+  Future<void> _onShow悬浮窗() async {
     try {
       if (!mounted) return;
-      _setResponse('Overlay is disabled.');
+      _setResponse('悬浮窗 is disabled.');
     } catch (e) {
-      _setResponse('Overlay failed: $e');
+      _setResponse('悬浮窗 failed: $e');
     }
   }
 
   // Hide the floating bubble. Useful for the demo and for clean shutdown.
-  Future<void> _onHideOverlay() async {
+  Future<void> _onHide悬浮窗() async {
     try {
-      // await FlutterOverlayWindow.closeOverlay();
+      // await Flutter悬浮窗Window.close悬浮窗();
       if (!mounted) return;
-      _setResponse('Overlay closed.');
+      _setResponse('悬浮窗 closed.');
     } catch (e) {
       _setResponse('Hide overlay failed: $e');
     }
@@ -279,10 +279,10 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen>
   // For Day 5a, we only handle 'bubble_tapped' — flash a SnackBar so we
   // can confirm the round trip works end-to-end. Day 5b adds 'capture_screen'
   // which will trigger the MediaProjection flow.
-  void _onOverlayEvent(dynamic message) {
+  void _on悬浮窗Event(dynamic message) {
     debugPrint('🐾 MAIN: overlay event received: $message');
     if (!mounted) return;
-    // Bubble taps currently no-op. Chat UI will hook this up later
+    // Bubble taps currently no-op. 对话 UI will hook this up later
     // to bring the chat to foreground.
   }
   // ── UI ─────────────────────────────────────────────────────────────────
@@ -290,7 +290,7 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('PocketClaw — Gemma Test')),
+      appBar: AppBar(title: const Text('PocketClaw — Gemma 测试')),
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -338,30 +338,30 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen>
               children: [
                 ElevatedButton(
                   onPressed: _onInstall,
-                  child: const Text('1. Install'),
+                  child: const Text('1. 安装'),
                 ),
                 ElevatedButton(
                   onPressed: _onLoad,
-                  child: const Text('2. Load'),
+                  child: const Text('2. 加载'),
                 ),
                 ElevatedButton(
-                  onPressed: _onGenerate,
-                  child: const Text('3. Generate'),
+                  onPressed: _on生成,
+                  child: const Text('3. 生成'),
                 ),
                 ElevatedButton.icon(
                   onPressed: _onAttachImage,
                   icon: const Icon(Icons.image),
-                  label: const Text('4. Attach Image'),
+                  label: const Text('4. 附加图片'),
                 ),
                 ElevatedButton.icon(
-                  onPressed: _onShowOverlay,
+                  onPressed: _onShow悬浮窗,
                   icon: const Icon(Icons.bubble_chart),
-                  label: const Text('5. Show Overlay'),
+                  label: const Text('5. 显示悬浮窗'),
                 ),
                 ElevatedButton.icon(
-                  onPressed: _onHideOverlay,
+                  onPressed: _onHide悬浮窗,
                   icon: const Icon(Icons.close),
-                  label: const Text('6. Hide Overlay'),
+                  label: const Text('6. 隐藏悬浮窗'),
                 ),
               ],
             ),
@@ -400,7 +400,7 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen>
                     IconButton(
                       icon: const Icon(Icons.close),
                       onPressed: _onClearImage,
-                      tooltip: 'Remove image',
+                      tooltip: '移除图片',
                     ),
                   ],
                 ),
@@ -421,7 +421,7 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen>
 
             // Response display — wrapped in Expanded + scroll so long
             // outputs don't overflow.
-            Text('Response:', style: Theme.of(context).textTheme.titleMedium),
+            Text('回复：', style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 8),
             Expanded(
               child: SingleChildScrollView(
