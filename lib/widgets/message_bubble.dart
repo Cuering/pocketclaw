@@ -112,7 +112,7 @@ class MessageBubble extends StatelessWidget {
                       Icon(Icons.error_outline, size: 18, color: textColor),
                       const SizedBox(width: 6),
                       Text(
-                        "Claw couldn't finish that.",
+                        '爪爪没能完成这次回复。',
                         style: TextStyle(color: textColor, fontSize: 14),
                       ),
                     ],
@@ -493,8 +493,8 @@ class _DocAttachmentCard extends StatelessWidget {
                     if (chunkCount > 0)
                       Text(
                         chunkCount == 1
-                            ? '1 section indexed'
-                            : '$chunkCount sections indexed',
+                            ? '已索引 1 个片段'
+                            : '已索引 $chunkCount 个片段',
                         style: TextStyle(
                           color: fg.withValues(alpha: 0.75),
                           fontSize: 11,
