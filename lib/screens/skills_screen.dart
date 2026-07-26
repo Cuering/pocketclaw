@@ -7,14 +7,14 @@ import '../services/skill_engine/skill_engine.dart';
 import '../services/skill_engine/skill_model.dart';
 import '../services/skill_engine/skill_store.dart';
 
-class 技能Screen extends StatefulWidget {
-  const 技能Screen({super.key});
+class SkillsScreen extends StatefulWidget {
+  const SkillsScreen({super.key});
 
   @override
-  State<技能Screen> createState() => _技能ScreenState();
+  State<SkillsScreen> createState() => _SkillsScreenState();
 }
 
-class _技能ScreenState extends State<技能Screen> {
+class _SkillsScreenState extends State<SkillsScreen> {
   bool _creating = false;
   String? _runningId;
   final TextEditingController _descController = TextEditingController();
@@ -64,7 +64,7 @@ class _技能ScreenState extends State<技能Screen> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: PocketClawTheme.bg2,
-        title: Text('删除 "${skill.name}"?',
+        title: Text('Delete "${skill.name}"?',
             style: Theme.of(ctx).textTheme.titleMedium),
         actions: [
           TextButton(
@@ -184,7 +184,7 @@ class _技能ScreenState extends State<技能Screen> {
             itemCount: skills.length,
             itemBuilder: (context, i) {
               final skill = skills[i];
-              final is运行ning = _runningId == skill.id;
+              final isRunning = _runningId == skill.id;
               return Padding(
                 padding: const EdgeInsets.only(bottom: 10),
                 child: GestureDetector(
@@ -247,7 +247,7 @@ class _技能ScreenState extends State<技能Screen> {
                           ),
                         ),
                         const SizedBox(width: 12),
-                        is运行ning
+                        isRunning
                             ? const SizedBox(
                                 width: 24,
                                 height: 24,
