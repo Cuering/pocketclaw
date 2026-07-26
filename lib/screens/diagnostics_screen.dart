@@ -121,7 +121,7 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     // ignore: avoid_print — fine for diagnostic harness.
-    debugPrint('App lifecycle: $state');
+    debugPrint('应用生命周期：$state');
   }
 
   // ── Button handlers ────────────────────────────────────────────────────
@@ -135,25 +135,25 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen>
   Future<void> _onInstall() async {
     try {
       await GemmaService.instance.install();
-      _setResponse('Install complete.');
+      _setResponse('安装完成。');
     } catch (e) {
-      _setResponse('Install failed: $e');
+      _setResponse('安装失败：$e');
     }
   }
 
   Future<void> _onLoad() async {
     try {
       await GemmaService.instance.load();
-      _setResponse('Model loaded.');
+      _setResponse('模型已加载。');
     } catch (e) {
-      _setResponse('Load failed: $e');
+      _setResponse('加载失败：$e');
     }
   }
 
   Future<void> _onGenerate() async {
     final prompt = _promptController.text.trim();
     if (prompt.isEmpty) {
-      _setResponse('Type a prompt first.');
+      _setResponse('请先输入提示词。');
       return;
     }
     try {
@@ -190,11 +190,11 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen>
       if (mounted) {
         setState(() {
           _response =
-              '$full\n\n— $tokenCount tok / ${elapsed.inSeconds}s ≈ $tps tok/s';
+              '$full\n\n— $tokenCount token / ${elapsed.inSeconds} 秒 ≈ $tps token/s';
         });
       }
     } catch (e) {
-      _setResponse('Generate failed: $e');
+      _setResponse('生成失败：$e');
     }
   }
 
@@ -226,7 +226,7 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen>
         _imageName = file.name;
       });
     } catch (e) {
-      _setResponse('Image picker failed: $e');
+      _setResponse('图片选择失败：$e');
     }
   }
 
@@ -256,9 +256,9 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen>
   Future<void> _onShowOverlay() async {
     try {
       if (!mounted) return;
-      _setResponse('Overlay is disabled.');
+      _setResponse('悬浮窗已禁用。');
     } catch (e) {
-      _setResponse('Overlay failed: $e');
+      _setResponse('悬浮窗失败：$e');
     }
   }
 
@@ -267,9 +267,9 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen>
     try {
       // await FlutterOverlayWindow.closeOverlay();
       if (!mounted) return;
-      _setResponse('Overlay closed.');
+      _setResponse('悬浮窗已关闭。');
     } catch (e) {
-      _setResponse('Hide overlay failed: $e');
+      _setResponse('隐藏悬浮窗失败：$e');
     }
   }
 
@@ -290,7 +290,7 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('PocketClaw — Gemma Test')),
+      appBar: AppBar(title: const Text('PocketClaw — Gemma 测试')),
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -323,7 +323,7 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen>
                   children: [
                     LinearProgressIndicator(value: progress / 100),
                     const SizedBox(height: 4),
-                    Text('Download: $progress%'),
+                    Text('下载：$progress%'),
                     const SizedBox(height: 8),
                   ],
                 );
@@ -338,30 +338,30 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen>
               children: [
                 ElevatedButton(
                   onPressed: _onInstall,
-                  child: const Text('1. Install'),
+                  child: const Text('1. 安装'),
                 ),
                 ElevatedButton(
                   onPressed: _onLoad,
-                  child: const Text('2. Load'),
+                  child: const Text('2. 加载'),
                 ),
                 ElevatedButton(
                   onPressed: _onGenerate,
-                  child: const Text('3. Generate'),
+                  child: const Text('3. 生成'),
                 ),
                 ElevatedButton.icon(
                   onPressed: _onAttachImage,
                   icon: const Icon(Icons.image),
-                  label: const Text('4. Attach Image'),
+                  label: const Text('4. 附加图片'),
                 ),
                 ElevatedButton.icon(
                   onPressed: _onShowOverlay,
                   icon: const Icon(Icons.bubble_chart),
-                  label: const Text('5. Show Overlay'),
+                  label: const Text('5. 显示悬浮窗'),
                 ),
                 ElevatedButton.icon(
                   onPressed: _onHideOverlay,
                   icon: const Icon(Icons.close),
-                  label: const Text('6. Hide Overlay'),
+                  label: const Text('6. 隐藏悬浮窗'),
                 ),
               ],
             ),
@@ -400,7 +400,7 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen>
                     IconButton(
                       icon: const Icon(Icons.close),
                       onPressed: _onClearImage,
-                      tooltip: 'Remove image',
+                      tooltip: '移除图片',
                     ),
                   ],
                 ),
@@ -412,7 +412,7 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen>
             TextField(
               controller: _promptController,
               decoration: const InputDecoration(
-                labelText: 'Prompt',
+                labelText: '提示词',
                 border: OutlineInputBorder(),
               ),
               maxLines: 2,
@@ -421,12 +421,12 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen>
 
             // Response display — wrapped in Expanded + scroll so long
             // outputs don't overflow.
-            Text('Response:', style: Theme.of(context).textTheme.titleMedium),
+            Text('回复：', style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 8),
             Expanded(
               child: SingleChildScrollView(
                 child: SelectableText(
-                  _response.isEmpty ? '(nothing yet)' : _response,
+                  _response.isEmpty ? '（暂无）' : _response,
                   style: Theme.of(context).textTheme.bodyMedium,
                 ),
               ),
