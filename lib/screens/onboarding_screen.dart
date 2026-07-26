@@ -124,7 +124,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 _goToStep(1);
               },
             ),
-            _权限Step(
+            _PermissionsStep(
               onNext: () {
                 _goToStep(2);
               },
@@ -137,7 +137,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             ),
             _ProgressStep(
               status: _setupStatus,
-              on重试: () {
+              onRetry: () {
                 _bootstrapStarted = false;
                 _setupStatus = StatusWords.random();
                 _startBootstrap();
@@ -360,10 +360,10 @@ class _Bullet extends StatelessWidget {
 // ── Step 3: Progress ────────────────────────────────────────────────────
 
 class _ProgressStep extends StatelessWidget {
-  const _ProgressStep({required this.status, required this.on重试});
+  const _ProgressStep({required this.status, required this.onRetry});
 
   final String status;
-  final VoidCallback on重试;
+  final VoidCallback onRetry;
 
   @override
   Widget build(BuildContext context) {
@@ -467,7 +467,7 @@ class _ProgressStep extends StatelessWidget {
                     SizedBox(
                       width: double.infinity,
                       child: FilledButton(
-                        onPressed: on重试,
+                        onPressed: onRetry,
                         style: FilledButton.styleFrom(
                           padding: const EdgeInsets.symmetric(vertical: 14),
                         ),
@@ -507,30 +507,30 @@ class _ProgressStep extends StatelessWidget {
   }
 }
 
-class _权限Step extends StatefulWidget {
-  const _权限Step({required this.onNext});
+class _PermissionsStep extends StatefulWidget {
+  const _PermissionsStep({required this.onNext});
 
   final VoidCallback onNext;
 
   @override
-  State<_权限Step> createState() => _权限StepState();
+  State<_PermissionsStep> createState() => _PermissionsStepState();
 }
 
-class _权限StepState extends State<_权限Step>
+class _PermissionsStepState extends State<_PermissionsStep>
     with WidgetsBindingObserver {
-  bool _overlay授权ed = false;
-  bool _mic授权ed = false;
+  bool _overlayGranted = false;
+  bool _micGranted = false;
   // ignore: unused_field
-  bool _camera授权ed = false;
+  bool _cameraGranted = false;
   // ignore: unused_field
-  bool _notification授权ed = false;
-  bool _accessibility授权ed = false;
+  bool _notificationGranted = false;
+  bool _accessibilityGranted = false;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _check权限();
+    _checkPermissions();
   }
 
   @override
@@ -542,38 +542,38 @@ class _权限StepState extends State<_权限Step>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      _check权限();
+      _checkPermissions();
     }
   }
 
-  Future<void> _check权限() async {
-    final overlay = await Flutter悬浮窗Window.isPermission授权ed();
-    final status = await DeviceActionsService.instance.checkApp权限();
-    final accessibility = await PrimitiveEngine.instance.is无障碍Enabled();
+  Future<void> _checkPermissions() async {
+    final overlay = await FlutterOverlayWindow.isPermissionGranted();
+    final status = await DeviceActionsService.instance.checkAppPermissions();
+    final accessibility = await PrimitiveEngine.instance.isAccessibilityEnabled();
     if (!mounted) return;
     setState(() {
-      _overlay授权ed = overlay;
-      _mic授权ed = status['mic'] ?? false;
-      _camera授权ed = status['camera'] ?? false;
-      _notification授权ed = status['notifications'] ?? false;
-      _accessibility授权ed = accessibility;
+      _overlayGranted = overlay;
+      _micGranted = status['mic'] ?? false;
+      _cameraGranted = status['camera'] ?? false;
+      _notificationGranted = status['notifications'] ?? false;
+      _accessibilityGranted = accessibility;
     });
   }
 
-  Future<void> _grant悬浮窗() async {
-    await 悬浮窗ControllerService.instance.ensurePermission();
-    await _check权限();
+  Future<void> _grantOverlay() async {
+    await OverlayControllerService.instance.ensurePermission();
+    await _checkPermissions();
   }
 
   Future<void> _grantSystem() async {
-    await DeviceActionsService.instance.requestApp权限();
+    await DeviceActionsService.instance.requestAppPermissions();
     await Future<void>.delayed(const Duration(milliseconds: 500));
-    await _check权限();
+    await _checkPermissions();
   }
 
-  Future<void> _grant无障碍() async {
-    await PrimitiveEngine.instance.open无障碍Settings();
-    // 授权 detected on resume via didChangeAppLifecycleState
+  Future<void> _grantAccessibility() async {
+    await PrimitiveEngine.instance.openAccessibilitySettings();
+    // Grant detected on resume via didChangeAppLifecycleState
   }
 
   @override
@@ -603,40 +603,40 @@ class _权限StepState extends State<_权限Step>
             icon: Icons.open_in_new,
             title: '显示在其他应用上层',
             description: '绘制悬浮气泡。',
-            granted: _overlay授权ed,
-            on授权: _grant悬浮窗,
+            granted: _overlayGranted,
+            onGrant: _grantOverlay,
           ),
           const SizedBox(height: 12),
           _PermissionRow(
             icon: Icons.mic_none,
             title: '麦克风',
             description: '用于聊天内语音输入。',
-            granted: _mic授权ed,
-            on授权: _grantSystem,
+            granted: _micGranted,
+            onGrant: _grantSystem,
           ),
           const SizedBox(height: 12),
           _PermissionRow(
             icon: Icons.accessibility_new,
             title: '无障碍',
             description: '让爪爪点击、输入并读取屏幕以运行技能。',
-            granted: _accessibility授权ed,
-            on授权: _grant无障碍,
+            granted: _accessibilityGranted,
+            onGrant: _grantAccessibility,
           ),
           // const SizedBox(height: 12),
           // _PermissionRow(
           //   icon: Icons.camera_alt_outlined,
           //   title: '相机与视觉',
           //   description: '用于截图与视觉分析。',
-          //   granted: _camera授权ed,
-          //   on授权: _grantSystem,
+          //   granted: _cameraGranted,
+          //   onGrant: _grantSystem,
           // ),
           // const SizedBox(height: 12),
           // _PermissionRow(
           //   icon: Icons.notifications_none,
           //   title: '通知',
           //   description: '显示后台辅助通知。',
-          //   granted: _notification授权ed,
-          //   on授权: _grantSystem,
+          //   granted: _notificationGranted,
+          //   onGrant: _grantSystem,
           // ),
           const Spacer(),
           SizedBox(
@@ -662,14 +662,14 @@ class _PermissionRow extends StatelessWidget {
     required this.title,
     required this.description,
     required this.granted,
-    required this.on授权,
+    required this.onGrant,
   });
 
   final IconData icon;
   final String title;
   final String description;
   final bool granted;
-  final VoidCallback on授权;
+  final VoidCallback onGrant;
 
   @override
   Widget build(BuildContext context) {
@@ -711,7 +711,7 @@ class _PermissionRow extends StatelessWidget {
         SizedBox(
           width: 80,
           child: TextButton(
-            onPressed: granted ? null : on授权,
+            onPressed: granted ? null : onGrant,
             style: TextButton.styleFrom(
               foregroundColor: PocketClawTheme.cyan,
               disabledForegroundColor: PocketClawTheme.mint,
