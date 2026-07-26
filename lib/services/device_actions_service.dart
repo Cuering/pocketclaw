@@ -15,8 +15,8 @@ class DeviceActionsService {
 
   static const MethodChannel _channel = MethodChannel('pocketclaw/device');
 
-  Future<DeviceActionResult> set手电(bool enabled) =>
-      _invoke('set手电', {'enabled': enabled});
+  Future<DeviceActionResult> setTorch(bool enabled) =>
+      _invoke('setTorch', {'enabled': enabled});
 
   Future<DeviceActionResult> openDialer(String phone) =>
       _invoke('openDialer', {'phone': phone});
@@ -57,10 +57,10 @@ class DeviceActionsService {
     } catch (_) {}
   }
 
-  Future<Map<String, bool>> checkApp权限() async {
+  Future<Map<String, bool>> checkAppPermissions() async {
     try {
       final raw = await _channel.invokeMapMethod<String, Object?>(
-        'checkApp权限',
+        'checkAppPermissions',
       );
       return {
         'mic': raw?['mic'] == true,
@@ -72,15 +72,15 @@ class DeviceActionsService {
     }
   }
 
-  Future<void> requestApp权限() async {
+  Future<void> requestAppPermissions() async {
     try {
-      await _channel.invokeMethod<void>('requestApp权限');
+      await _channel.invokeMethod<void>('requestAppPermissions');
     } catch (_) {}
   }
 
-  Future<bool> get语音Trigger() async {
+  Future<bool> getVoiceTrigger() async {
     try {
-      return await _channel.invokeMethod<bool>('get语音Trigger') ?? false;
+      return await _channel.invokeMethod<bool>('getVoiceTrigger') ?? false;
     } catch (_) {
       return false;
     }
