@@ -57,7 +57,7 @@ class _WorkflowsScreenState extends State<WorkflowsScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            '无法生成工作流。请先创建一些技能再试。',
+            'Could not generate workflow. Create some skills first, then try again.',
           ),
         ),
       );
@@ -75,7 +75,7 @@ class _WorkflowsScreenState extends State<WorkflowsScreen> {
     });
     ScaffoldMessenger.of(
       context,
-    ).showSnackBar(SnackBar(content: Text(task.result ?? '工作流完成')));
+    ).showSnackBar(SnackBar(content: Text(task.result ?? 'Workflow complete')));
   }
 
   Future<void> _deleteWorkflow(WorkflowModel workflow) async {
@@ -90,12 +90,12 @@ class _WorkflowsScreenState extends State<WorkflowsScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消'),
+            child: const Text('Cancel'),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
             child: Text(
-              '删除',
+              'Delete',
               style: Theme.of(ctx).textTheme.bodyMedium?.copyWith(
                     color: PocketClawTheme.error,
                   ),
@@ -131,7 +131,7 @@ class _WorkflowsScreenState extends State<WorkflowsScreen> {
         builder: (ctx, setStateInner) => AlertDialog(
           backgroundColor: PocketClawTheme.bg2,
           title: Text(
-            '创建工作流',
+            'Create Workflow',
             style: Theme.of(ctx).textTheme.titleMedium,
           ),
           content: TextField(
@@ -140,7 +140,7 @@ class _WorkflowsScreenState extends State<WorkflowsScreen> {
             maxLines: 3,
             style: Theme.of(ctx).textTheme.bodyMedium,
             decoration: InputDecoration(
-              hintText: '描述工作流要做什么…',
+              hintText: 'Describe what the workflow should do...',
               hintStyle: Theme.of(ctx).textTheme.bodyMedium?.copyWith(
                   color: PocketClawTheme.muted,
                 ),
@@ -152,7 +152,7 @@ class _WorkflowsScreenState extends State<WorkflowsScreen> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx),
-              child: const Text('取消'),
+              child: const Text('Cancel'),
             ),
             FilledButton(
               onPressed: _creating
@@ -166,7 +166,7 @@ class _WorkflowsScreenState extends State<WorkflowsScreen> {
                       height: 16,
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
-                  : const Text('生成'),
+                  : const Text('Generate'),
             ),
           ],
         ),
@@ -181,13 +181,13 @@ class _WorkflowsScreenState extends State<WorkflowsScreen> {
       backgroundColor: PocketClawTheme.bg,
       appBar: AppBar(
         backgroundColor: PocketClawTheme.bg,
-        title: Text('工作流', style: theme.textTheme.headlineMedium),
+        title: Text('Workflows', style: theme.textTheme.headlineMedium),
         actions: [
           IconButton(
             icon: const Icon(Icons.add),
             color: PocketClawTheme.cyan,
             onPressed: _showCreateDialog,
-            tooltip: '创建工作流',
+            tooltip: 'Create Workflow',
           ),
         ],
       ),
@@ -204,7 +204,7 @@ class _WorkflowsScreenState extends State<WorkflowsScreen> {
                   vertical: 8,
                 ),
                 child: Text(
-                  WorkflowEngine.instance.lastError ?? '工作流引擎错误',
+                  WorkflowEngine.instance.lastError ?? 'Workflow engine error',
                   style: theme.textTheme.bodyMedium?.copyWith(
                     color: PocketClawTheme.error,
                   ),
@@ -226,11 +226,11 @@ class _WorkflowsScreenState extends State<WorkflowsScreen> {
                             size: 48,
                           ),
                           const SizedBox(height: 12),
-                          Text('还没有工作流', style: theme.textTheme.bodyMedium),
+                          Text('No workflows yet', style: theme.textTheme.bodyMedium),
                           const SizedBox(height: 8),
                           FilledButton(
                             onPressed: _showCreateDialog,
-                            child: const Text('创建一个工作流'),
+                            child: const Text('Create a Workflow'),
                           ),
                         ],
                       ),
@@ -256,14 +256,14 @@ class _WorkflowsScreenState extends State<WorkflowsScreen> {
                                     ListTile(
                                       leading: const Icon(Icons.ios_share,
                                           color: PocketClawTheme.cyan),
-                                      title: Text('导出',
+                                      title: Text('Export',
                                           style: Theme.of(ctx).textTheme.bodyMedium),
                                       onTap: () => Navigator.pop(ctx, 'export'),
                                     ),
                                     ListTile(
                                       leading: const Icon(Icons.delete_outline,
                                           color: PocketClawTheme.error),
-                                      title: Text('删除',
+                                      title: Text('Delete',
                                           style: Theme.of(ctx).textTheme.bodyMedium),
                                       onTap: () => Navigator.pop(ctx, 'delete'),
                                     ),
@@ -319,7 +319,7 @@ class _WorkflowsScreenState extends State<WorkflowsScreen> {
                                       )
                                     : FilledButton(
                                         onPressed: () => _runWorkflow(workflow),
-                                        child: const Text('运行'),
+                                        child: const Text('Run'),
                                       ),
                               ],
                             ),
