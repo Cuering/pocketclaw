@@ -181,17 +181,11 @@ class GemmaService {
   /// Onboarding's "Download" button calls this and awaits completion
   /// (showing progress). After it returns, state is [GemmaState.installed].
   Future<void> ensureInstalled() async {
-    // If we've already registered the plugin's active model this session,
-    // short-circuit. Otherwise we MUST call installModel() — even if the
-    // file is on disk — because the active-model pointer is process-scoped
-    // and not implied by the file's existence.
     if (_pluginInstallDone) return;
     if (_state.value == GemmaState.installing) return;
     if (_state.value == GemmaState.loading ||
         _state.value == GemmaState.ready ||
         _state.value == GemmaState.generating) {
-      // Some other path has progressed past install (e.g. via resumeIfInstalled).
-      // Treat plugin install as done.
       _pluginInstallDone = true;
       return;
     }
@@ -201,17 +195,31 @@ class GemmaService {
       if (!await isInstalled() &&
           !await ConnectivityService.instance.hasInternet()) {
         throw const GemmaException(
-          'No internet connection. Connect to Wi-Fi or mobile data and retry.',
+          'No internet connection. Connect to Wi‑Fi or mobile data and retry.',
         );
       }
-      await fg.FlutterGemma.installModel(
-        modelType: GemmaConfig.modelType,
-        fileType: GemmaConfig.fileType,
-      ).fromNetwork(GemmaConfig.modelUrl).withProgress((p) {
-        _downloadProgress.value = p;
-      }).install();
-      _pluginInstallDone = true;
-      _state.value = GemmaState.installed;
+      // Try each URL in order (mirror first, then official HF).
+      for (final url in GemmaConfig.modelUrlCandidates) {
+        try {
+          await fg.FlutterGemma.installModel(
+            modelType: GemmaConfig.modelType,
+            fileType: GemmaConfig.fileType,
+          ).fromNetwork(url).withProgress((p) {
+            _downloadProgress.value = p;
+          }).install();
+          _pluginInstallDone = true;
+          _state.value = GemmaState.installed;
+          debugPrint('🐾 GEMMA: installed from $url');
+          return; // success
+        } catch (_) {
+          debugPrint('🐾 GEMMA: install from $url failed, trying next…');
+          // fall through to next candidate
+        }
+      }
+      // All candidates exhausted
+      throw const GemmaException(
+        'All download sources failed. Please check your network and try again.',
+      );
     } catch (e, stack) {
       _lastError = e;
       _state.value = GemmaState.error;
@@ -249,7 +257,7 @@ class GemmaService {
   ///
   /// Throws [GemmaException] on failure; transitions [embedderState] to
   /// error.
-  Future<void> installEmbedder() async {
+    Future<void> installEmbedder() async {
     if (_embedderInstallDone) return;
     if (_embedderState.value == EmbedderState.installing) return;
     if (_embedderState.value == EmbedderState.installed) {
@@ -259,17 +267,30 @@ class GemmaService {
     try {
       _embedderState.value = EmbedderState.installing;
       _embedderDownloadProgress.value = 0;
-      await fg.FlutterGemma.installEmbedder()
-          .modelFromNetwork(GemmaConfig.embeddingModelUrl)
-          .tokenizerFromNetwork(GemmaConfig.embeddingTokenizerUrl)
-          .withModelProgress((p) {
-            _embedderDownloadProgress.value = p;
-          })
-          .install();
 
-      _embedderInstallDone = true;
-      _embedderState.value = EmbedderState.installed;
-      debugPrint('🐾 GEMMA: embedder installed and active');
+      // Try mirror first, then official HF for both model and tokenizer.
+      for (final modelUrl in GemmaConfig.embeddingModelUrlCandidates) {
+        for (final tokUrl in GemmaConfig.embeddingTokenizerUrlCandidates) {
+          try {
+            await fg.FlutterGemma.installEmbedder()
+                .modelFromNetwork(modelUrl)
+                .tokenizerFromNetwork(tokUrl)
+                .withModelProgress((p) {
+                  _embedderDownloadProgress.value = p;
+                })
+                .install();
+            _embedderInstallDone = true;
+            _embedderState.value = EmbedderState.installed;
+            debugPrint('🐾 GEMMA: embedder installed from model=$modelUrl tok=$tokUrl');
+            return;
+          } catch (_) {
+            debugPrint('🐾 GEMMA: embedder install from ($modelUrl, $tokUrl) failed, trying next...');
+          }
+        }
+      }
+      throw const GemmaException(
+        'All embedder download sources failed. Check your network and retry.',
+      );
     } catch (e, stack) {
       _embedderState.value = EmbedderState.error;
       debugPrint('🐾 GEMMA: installEmbedder() failed: $e\n$stack');
@@ -283,13 +304,7 @@ class GemmaService {
     }
   }
 
-  /// Lazily fetch (and cache) the active embedder instance. Throws if the
-  /// embedder hasn't been installed yet — call [installEmbedder] first.
-  ///
-  /// The first call constructs the [EmbeddingModel] from the active spec,
-  /// which is cheap (~tens of ms — no GPU allocation, unlike inference
-  /// model load). Subsequent calls return the cached instance.
-  Future<fg.EmbeddingModel> getEmbedder() async {
+Future<fg.EmbeddingModel> getEmbedder() async {
     final cached = _embedder;
     if (cached != null) return cached;
     if (_embedderState.value != EmbedderState.installed) {
