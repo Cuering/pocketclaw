@@ -6,9 +6,9 @@
 //   - The MAIN isolate (this file's main()): hosts the chat UI and the
 //     Gemma model.
 //   - The OVERLAY isolate (overlayMain below): hosts the floating bubble
-//     painted over other apps via Flutter悬浮窗Window.
+//     painted over other apps via FlutterOverlayWindow.
 // The overlay's tap events come back through an IsolateNameServer port
-// (kMainPortName) registered by 对话Screen / DiagnosticsScreen.
+// (kMainPortName) registered by ChatScreen / DiagnosticsScreen.
 
 import 'dart:async';
 import 'dart:isolate';
@@ -29,7 +29,7 @@ import 'services/rag_service.dart';
 import 'screens/onboarding_screen.dart';
 import 'models/conversation.dart';
 import 'services/conversation_store.dart';
-import 'services/文档_store.dart';
+import 'services/document_store.dart';
 import 'services/overlay_controller_service.dart';
 import 'services/workflow_engine/workflow_engine.dart';
 import 'services/workflow_engine/workflow_store.dart';
@@ -38,7 +38,7 @@ import 'services/background_task_engine/task_store.dart';
 import 'services/dynamic_ui/dynamic_ui_service.dart';
 import 'services/marketplace/marketplace_service.dart';
 
-// 分享d port name. Must match what listeners register under
+// Shared port name. Must match what listeners register under
 // IsolateNameServer.registerPortWithName(...). The diagnostics screen
 // declares its own const with the same value for use inside that file.
 const String kMainPortName = 'pocketclaw_main_port';
@@ -48,7 +48,7 @@ const String kMainPortName = 'pocketclaw_main_port';
 // ─────────────────────────────────────────────────────────────────────────
 
 /// Entry point for the OVERLAY isolate. Android launches this in a separate
-/// Dart VM when Flutter悬浮窗Window.show悬浮窗() runs. It's a complete
+/// Dart VM when FlutterOverlayWindow.showOverlay() runs. It's a complete
 /// second Flutter app that paints into the floating window — it can't see
 /// state or singletons from the main app's isolate.
 ///
@@ -78,7 +78,7 @@ class _ClawBubbleState extends State<_ClawBubble> {
   bool _expanded = false;
   ReceivePort? _bubbleReceivePort;
 
-  // 语音 Interaction States
+  // Voice Interaction States
   bool _listening = false;
   bool _thinking = false;
   String _statusText = '嘿，PC…';
@@ -144,7 +144,7 @@ class _ClawBubbleState extends State<_ClawBubble> {
 
   Future<void> _expand() async {
     // Dynamically resize window to 300x300 first to capture a wide outside tap area
-    await Flutter悬浮窗Window.resize悬浮窗(300, 300, true);
+    await FlutterOverlayWindow.resizeOverlay(300, 300, true);
     setState(() => _expanded = true);
   }
 
@@ -157,7 +157,7 @@ class _ClawBubbleState extends State<_ClawBubble> {
     });
     // Wait for the collapse animation to finish, then shrink window back to 80x80
     await Future<void>.delayed(const Duration(milliseconds: 200));
-    await Flutter悬浮窗Window.resize悬浮窗(80, 80, true);
+    await FlutterOverlayWindow.resizeOverlay(80, 80, true);
   }
 
   void _manualListen() {
@@ -272,7 +272,7 @@ class _ClawBubbleState extends State<_ClawBubble> {
                 ),
               ),
             ),
-            _悬浮窗IconButton(
+            _OverlayIconButton(
               icon: Icons.close,
               tooltip: '关闭',
               onPressed: _collapse,
@@ -342,7 +342,7 @@ class _ClawBubbleState extends State<_ClawBubble> {
                 ),
               ),
             ),
-            _悬浮窗IconButton(
+            _OverlayIconButton(
               icon: Icons.close,
               tooltip: '收起',
               onPressed: _collapse,
@@ -353,7 +353,7 @@ class _ClawBubbleState extends State<_ClawBubble> {
         Row(
           children: [
             Expanded(
-              child: _悬浮窗Action(
+              child: _OverlayAction(
                 icon: Icons.mic,
                 label: '语音',
                 onTap: _manualListen,
@@ -361,7 +361,7 @@ class _ClawBubbleState extends State<_ClawBubble> {
             ),
             const SizedBox(width: 6),
             Expanded(
-              child: _悬浮窗Action(
+              child: _OverlayAction(
                 icon: Icons.chat_bubble_outline,
                 label: '对话',
                 onTap: _openApp,
@@ -373,7 +373,7 @@ class _ClawBubbleState extends State<_ClawBubble> {
         Row(
           children: [
             Expanded(
-              child: _悬浮窗Action(
+              child: _OverlayAction(
                 icon: Icons.flashlight_on_outlined,
                 label: '手电',
                 onTap: () => _send({'type': 'toggle_torch'}),
@@ -381,7 +381,7 @@ class _ClawBubbleState extends State<_ClawBubble> {
             ),
             const SizedBox(width: 6),
             Expanded(
-              child: _悬浮窗Action(
+              child: _OverlayAction(
                 icon: Icons.power_settings_new,
                 label: '关闭浮窗',
                 onTap: _destroy,
@@ -401,9 +401,9 @@ class _ClawBubbleState extends State<_ClawBubble> {
 
   Future<void> _destroy() async {
     _send({'type': 'overlay_deactivated'});
-    // 关闭浮窗 from overlay isolate context by writing false to state file
-    await 悬浮窗ControllerService.instance.writeState(false);
-    await Flutter悬浮窗Window.close悬浮窗();
+    // Deactivate from overlay isolate context by writing false to state file
+    await OverlayControllerService.instance.writeState(false);
+    await FlutterOverlayWindow.closeOverlay();
   }
 
   void _send(Map<String, Object?> event) {
@@ -412,8 +412,8 @@ class _ClawBubbleState extends State<_ClawBubble> {
   }
 }
 
-class _悬浮窗Action extends StatelessWidget {
-  const _悬浮窗Action({
+class _OverlayAction extends StatelessWidget {
+  const _OverlayAction({
     required this.icon,
     required this.label,
     required this.onTap,
@@ -458,8 +458,8 @@ class _悬浮窗Action extends StatelessWidget {
   }
 }
 
-class _悬浮窗IconButton extends StatelessWidget {
-  const _悬浮窗IconButton({
+class _OverlayIconButton extends StatelessWidget {
+  const _OverlayIconButton({
     required this.icon,
     required this.tooltip,
     required this.onPressed,
@@ -547,8 +547,8 @@ class PocketClawApp extends StatelessWidget {
 
 /// Decides what the user sees on launch:
 ///   - First-time user (!isOnboarded) → OnboardingScreen
-///   - Returning user with prior chats → 对话Screen with most-recent loaded
-///   - Returning user, no prior chats → 对话Screen with a fresh empty conv
+///   - Returning user with prior chats → ChatScreen with most-recent loaded
+///   - Returning user, no prior chats → ChatScreen with a fresh empty conv
 ///
 /// Stateful so we can rebuild after onboarding completes (no need to
 /// restart the app).
@@ -588,7 +588,7 @@ class _RootRouterState extends State<_RootRouter> {
         final convs = snapshot.data!;
         // Auto-resume: most-recent conversation (loadAll sorts desc).
         final initial = convs.isNotEmpty ? convs.first : null;
-        return 对话Screen(conversation: initial);
+        return ChatScreen(conversation: initial);
       },
     );
   }
