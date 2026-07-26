@@ -11,8 +11,8 @@ import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 import '../core/pocketclaw_theme.dart';
 import '../core/status_words.dart';
 import '../models/conversation.dart';
-import '../models/document.dart';
-import '../services/document_store.dart';
+import '../models/文档.dart';
+import '../services/文档_store.dart';
 import '../services/rag_service.dart';
 import '../models/message.dart';
 import '../services/conversation_store.dart';
@@ -36,17 +36,17 @@ const String kMainPortName = 'pocketclaw_main_port';
 ///
 /// If `conversation` is null, starts a fresh empty conversation that will
 /// be persisted as soon as the first message is sent.
-class ChatScreen extends StatefulWidget {
-  const ChatScreen({super.key, this.conversation});
+class 对话Screen extends StatefulWidget {
+  const 对话Screen({super.key, this.conversation});
 
   /// The conversation to display. Null = start a new chat.
   final Conversation? conversation;
 
   @override
-  State<ChatScreen> createState() => _ChatScreenState();
+  State<对话Screen> createState() => _对话ScreenState();
 }
 
-class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
+class _对话ScreenState extends State<对话Screen> with WidgetsBindingObserver {
   // Current conversation. Initialized from widget.conversation or a fresh one.
   late Conversation _conversation;
 
@@ -59,17 +59,17 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   String? _pendingDocumentText;
 
   // Documents indexed for the current conversation. Used for preview/history
-  // lookup and document-intent RAG retrieval; not shown as persistent chips.
-  List<Document> _documents = const [];
+  // lookup and 文档-intent RAG retrieval; not shown as persistent chips.
+  List<Document> _文档s = const [];
 
-  // True while a document is being chunked + embedded. Disables the
+  // True while a 文档 is being chunked + embedded. Disables the
   // attach button to prevent double-indexing and shows inline status.
   bool _indexing = false;
   String? _indexingDocumentName;
   String _indexingStatus = StatusWords.random();
   String _thinkingStatus = StatusWords.random();
 
-  // Remembered failed send (for the Retry button on a failed assistant
+  // Remembered failed send (for the 重试 button on a failed assistant
   // bubble). Cleared on success or on a fresh send. We also keep the
   // bytes so retry recreates the exact same multimodal request.
   String? _lastFailedText;
@@ -98,22 +98,22 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     super.initState();
     _conversation = widget.conversation ?? Conversation();
     WidgetsBinding.instance.addObserver(this);
-    _registerOverlayPort();
+    _register悬浮窗Port();
     _loadDocuments();
     // The overlay should not cover the main app while the user is inside it.
     // ignore: discarded_futures
-    OverlayControllerService.instance.hide();
+    悬浮窗ControllerService.instance.hide();
     // ignore: discarded_futures
-    // VoiceService.instance.syncContinuousState();
+    // 语音Service.instance.syncContinuousState();
 
     // Aggressive post-frame delay to ensure the overlay bubble closes when opening the app
     Future.delayed(const Duration(milliseconds: 400), () {
-      OverlayControllerService.instance.hide();
+      悬浮窗ControllerService.instance.hide();
     });
   }
 
   @override
-  void didUpdateWidget(ChatScreen oldWidget) {
+  void didUpdateWidget(对话Screen oldWidget) {
     super.didUpdateWidget(oldWidget);
     // If the parent passes a different conversation, swap to it.
     if (widget.conversation != null &&
@@ -125,7 +125,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         _pendingImageSummary = null;
         _pendingDocument = null;
         _pendingDocumentText = null;
-        _documents = const [];
+        _文档s = const [];
       });
       _loadDocuments();
     }
@@ -144,37 +144,37 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       // ignore: discarded_futures
-      OverlayControllerService.instance.hide();
+      悬浮窗ControllerService.instance.hide();
       // ignore: discarded_futures
-      // VoiceService.instance.syncContinuousState();
+      // 语音Service.instance.syncContinuousState();
     } else if (state == AppLifecycleState.inactive ||
         state == AppLifecycleState.paused ||
         state == AppLifecycleState.hidden) {
       // ignore: discarded_futures
-      OverlayControllerService.instance.showIfEnabled();
+      悬浮窗ControllerService.instance.showIfEnabled();
       // ignore: discarded_futures
-      // VoiceService.instance.syncContinuousState();
+      // 语音Service.instance.syncContinuousState();
     }
   }
 
-  void _registerOverlayPort() {
+  void _register悬浮窗Port() {
     IsolateNameServer.removePortNameMapping(kMainPortName);
     _overlayPort = ReceivePort();
     IsolateNameServer.registerPortWithName(
       _overlayPort!.sendPort,
       kMainPortName,
     );
-    _overlayPort!.listen(_onOverlayEvent);
+    _overlayPort!.listen(_on悬浮窗Event);
   }
 
-  Future<void> _onOverlayEvent(dynamic event) async {
+  Future<void> _on悬浮窗Event(dynamic event) async {
     if (event is! Map) return;
     final type = event['type'] as String?;
     if (type == 'overlay_deactivated') {
-      await OverlayControllerService.instance.markDisabledFromOverlay();
+      await 悬浮窗ControllerService.instance.markDisabledFrom悬浮窗();
       if (!mounted) return;
       setState(() {});
-      _showSnack('Overlay deactivated.');
+      _showSnack('悬浮窗已关闭。');
       return;
     }
     if (type == 'open_app') {
@@ -183,13 +183,13 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     }
     if (type == 'toggle_torch') {
       _torchOn = !_torchOn;
-      final result = await DeviceActionsService.instance.setTorch(_torchOn);
+      final result = await DeviceActionsService.instance.set手电(_torchOn);
       if (!result.ok) _torchOn = !_torchOn;
       return;
     }
     if (type == 'manual_voice_listen') {
       // ignore: discarded_futures
-      VoiceService.instance.triggerManualVoiceCapture();
+      语音Service.instance.triggerManual语音Capture();
       return;
     }
   }
@@ -250,7 +250,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       if (bytes == null) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text("Couldn't read that file."),
+            content: Text("无法读取该文件。"),
             duration: Duration(seconds: 3),
           ),
         );
@@ -269,7 +269,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       }
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Supported documents: md, pdf, txt.'),
+          content: Text('支持的文档：md、pdf、txt。'),
           duration: Duration(seconds: 3),
         ),
       );
@@ -278,7 +278,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text("Couldn't open the file picker."),
+            content: Text("无法打开文件选择器。"),
             duration: Duration(seconds: 3),
           ),
         );
@@ -402,7 +402,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   /// Routes a dynamic-UI button command through the existing send path.
   void _handleComponentCommand(String command) {
     if (command.trim().isEmpty) return;
-    _handleSend(command); // existing send path; self-guards on _busy
+    _handle发送(command); // existing send path; self-guards on _busy
   }
 
   void _showSnack(String message) {
@@ -426,7 +426,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     buffer.writeln();
     if (_hasPriorUploadMemory()) {
       buffer.writeln(
-        '[Memory rule] Earlier image/document summaries below are available '
+        '[Memory rule] Earlier image/文档 summaries below are available '
         'chat memory. If the user asks about a prior upload, answer from that '
         'memory and prior assistant replies instead of asking them to upload '
         'again. Ask for reupload only when no relevant memory exists.',
@@ -472,7 +472,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   String _messageTextForPrompt(Message msg) {
     final parts = <String>[];
     if (msg.text.trim().isNotEmpty) parts.add(msg.text.trim());
-    if (msg.hasDoc) parts.add('[Attached document: ${msg.attachedDocName}]');
+    if (msg.hasDoc) parts.add('[Attached 文档: ${msg.attachedDocName}]');
     if (msg.hasImageSummary) {
       final name = msg.imageName?.trim().isNotEmpty == true
           ? msg.imageName!.trim()
@@ -549,7 +549,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     }
 
     final buffer = StringBuffer();
-    buffer.writeln('Running conversation memory for Claw.');
+    buffer.writeln('正在为爪爪整理对话记忆。');
     final existingText = existing?.trim();
     if (existingText != null && existingText.isNotEmpty) {
       buffer.writeln();
@@ -646,7 +646,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     if (trimmed.length < 5500) return text;
     const completeEndings = ['.', '!', '?', ')', ']', '`'];
     if (completeEndings.any(trimmed.endsWith)) return text;
-    return '$trimmed\n\nI may have hit the response limit. Send "continue" '
+    return '$trimmed\n\nI may have hit the response limit. 发送 "continue" '
         'and I will pick up from here.';
   }
 
@@ -663,7 +663,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         lower.contains('overview') ||
         lower.contains('key point') ||
         lower.contains('main idea') ||
-        lower.contains('document') ||
+        lower.contains('文档') ||
         lower.contains('doc') ||
         lower.contains('file') ||
         lower.contains('pdf');
@@ -703,7 +703,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     required String text,
   }) {
     final context = StringBuffer()
-      ..writeln('Use this attached document to answer the user.')
+      ..writeln('Use this attached 文档 to answer the user.')
       ..writeln('Document: ${doc.name}')
       ..writeln('---')
       ..writeln(_shorten(text.trim(), 18000))
@@ -716,7 +716,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     required List<RetrievedChunk> hits,
   }) {
     final context = StringBuffer();
-    context.writeln('Use the following document excerpts to answer:');
+    context.writeln('Use the following 文档 excerpts to answer:');
     for (final h in hits) {
       context.writeln();
       context.writeln('[From ${h.docName}]');
@@ -743,7 +743,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     return '${context.toString()}\n$prompt';
   }
 
-  Future<void> _handleSend(String text) async {
+  Future<void> _handle发送(String text) async {
     if (_busy || _preparingImageSummary) return;
 
     final imageBytes = _pendingImage;
@@ -782,7 +782,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     _scrollToBottom();
 
     final commandResponse = imageBytes == null && doc == null
-        ? await ChatCommandService.instance.tryHandleWithGemma(text)
+        ? await 对话CommandService.instance.tryHandleWithGemma(text)
         : null;
     if (commandResponse != null) {
       if (mounted) {
@@ -797,7 +797,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           _lastFailedImageSummary = null;
         });
       }
-      if (_conversation.title == 'New chat') {
+      if (_conversation.title == '新对话') {
         _conversation.title = _conversation.deriveTitleFromMessages();
       }
       try {
@@ -841,7 +841,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     }
 
     final retrievalQuery = text.trim().isEmpty && doc != null
-        ? 'summarize the document ${doc.name}'
+        ? 'summarize the 文档 ${doc.name}'
         : text;
     if (doc != null && docText != null && docText.trim().isNotEmpty) {
       prompt = _prependDocumentTextContext(
@@ -849,7 +849,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         doc: doc,
         text: docText,
       );
-    } else if (_documents.isNotEmpty &&
+    } else if (_文档s.isNotEmpty &&
         (doc != null || _looksLikeDocumentQuery(retrievalQuery))) {
       try {
         var hits = await RagService.instance.retrieve(
@@ -911,14 +911,14 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       debugPrint('🐾 CHAT: generate failed: $e\n$stack');
       if (mounted) {
         setState(() {
-          // Remember what failed so the Retry button can re-run it.
+          // Remember what failed so the 重试 button can re-run it.
           _lastFailedText = text;
           _lastFailedImage = imageBytes;
           _lastFailedImageName = imageName;
           _lastFailedImageSummary = imageSummary;
           final lastIdx = _conversation.messages.length - 1;
           // Tag the assistant message with a sentinel that the bubble
-          // renderer recognises and replaces with a Retry UI.
+          // renderer recognises and replaces with a 重试 UI.
           _conversation.messages[lastIdx] = _conversation.messages[lastIdx]
               .copyWith(text: '__CLAW_ERROR__');
         });
@@ -954,7 +954,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       }
 
       // Auto-title if this is the first user message in a brand-new chat.
-      if (_conversation.title == 'New chat') {
+      if (_conversation.title == '新对话') {
         _conversation.title = _conversation.deriveTitleFromMessages();
       }
 
@@ -976,7 +976,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     }
   }
 
-  /// Load the documents indexed for the current conversation. Cheap —
+  /// Load the 文档s indexed for the current conversation. Cheap —
   /// just walks the Hive box filtering by conversation_id.
   Future<void> _loadDocuments() async {
     try {
@@ -984,14 +984,14 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         _conversation.id,
       );
       if (!mounted) return;
-      setState(() => _documents = docs);
+      setState(() => _文档s = docs);
     } catch (e, stack) {
       debugPrint('🐾 CHAT: _loadDocuments failed: $e\n$stack');
       // Soft-fail: empty list, chat keeps working.
     }
   }
 
-  /// Read a selected text/PDF document, index it, and keep it as the pending
+  /// Read a selected text/PDF 文档, index it, and keep it as the pending
   /// attachment for the next send. The original bytes are discarded after
   /// extraction.
   Future<void> _indexDocumentFile({
@@ -1002,7 +1002,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     if (GemmaService.instance.embedderState.value != EmbedderState.installed) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text("Claw is still getting ready. Just a moment…"),
+          content: Text("爪爪还在准备中。稍等…"),
           duration: Duration(seconds: 3),
         ),
       );
@@ -1024,7 +1024,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text("Claw couldn't read that file. Try a different one?"),
+          content: Text("爪爪读不了这个文件。换一个试试？"),
           duration: Duration(seconds: 3),
         ),
       );
@@ -1034,7 +1034,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     if (text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('That file looks empty.'),
+          content: Text('这个文件看起来是空的。'),
           duration: Duration(seconds: 3),
         ),
       );
@@ -1044,7 +1044,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'That document is too large after extraction. Keep it under '
+            '文档提取后过大。请控制在 '
             '${_maxExtractedDocumentChars ~/ 1000}k characters.',
           ),
           duration: const Duration(seconds: 4),
@@ -1062,9 +1062,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     try {
       await _deletePendingDocumentIfAny();
       // Persist the conversation FIRST if it has no messages yet, so
-      // the document's conversationId points at something that will
+      // the 文档's conversationId points at something that will
       // exist when the user later reopens the chat.
-      if (_conversation.messages.isEmpty && _conversation.title == 'New chat') {
+      if (_conversation.messages.isEmpty && _conversation.title == '新对话') {
         _conversation.title = name;
         await ConversationStore.instance.save(_conversation);
       }
@@ -1087,14 +1087,14 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         _pendingDocumentText = text;
       });
 
-      // The pending document chip in the composer is the completion signal.
+      // The pending 文档 chip in the composer is the completion signal.
     } catch (e, stack) {
       debugPrint('🐾 CHAT: indexDocument failed: $e\n$stack');
       if (mounted) {
         ScaffoldMessenger.of(context).hideCurrentSnackBar();
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text("Claw couldn't read that file. Try a different one?"),
+            content: Text("爪爪读不了这个文件。换一个试试？"),
             duration: Duration(seconds: 3),
           ),
         );
@@ -1109,7 +1109,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     }
   }
 
-  /// Open a bottom sheet showing the indexed document chunks. The original
+  /// Open a bottom sheet showing the indexed 文档 chunks. The original
   /// bytes are not kept around; preview is rebuilt from the vector store text.
   Future<void> _previewDocument(String docId) async {
     final doc = await DocumentStore.instance.getById(docId);
@@ -1117,7 +1117,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      builder: (_) => _DocumentPreviewSheet(document: doc),
+      builder: (_) => _DocumentPreviewSheet(文档: doc),
     );
   }
 
@@ -1131,7 +1131,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     if (text == null) return;
     setState(() {
       // Drop the last two messages (the user msg + the failed assistant msg)
-      // so _handleSend re-adds them cleanly.
+      // so _handle发送 re-adds them cleanly.
       if (_conversation.messages.length >= 2) {
         _conversation.messages.removeLast();
         _conversation.messages.removeLast();
@@ -1144,7 +1144,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       _lastFailedImageName = null;
       _lastFailedImageSummary = null;
     });
-    await _handleSend(text);
+    await _handle发送(text);
   }
 
   Future<void> _regenerateLatestAssistant() async {
@@ -1174,9 +1174,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
     var prompt = _buildPromptFromHistory(_messageTextForPrompt(userMsg));
     final retrievalQuery = userMsg.text.trim().isEmpty && userMsg.hasDoc
-        ? 'summarize the document ${userMsg.attachedDocName}'
+        ? 'summarize the 文档 ${userMsg.attachedDocName}'
         : userMsg.text;
-    if (_documents.isNotEmpty && _looksLikeDocumentQuery(retrievalQuery)) {
+    if (_文档s.isNotEmpty && _looksLikeDocumentQuery(retrievalQuery)) {
       try {
         var hits = await RagService.instance.retrieve(
           query: retrievalQuery,
@@ -1275,7 +1275,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     if (picked.id == 'NEW') {
       setState(() {
         _conversation = Conversation();
-        _documents = const [];
+        _文档s = const [];
         _pendingDocument = null;
         _pendingDocumentText = null;
       });
@@ -1283,7 +1283,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     } else {
       setState(() {
         _conversation = picked;
-        _documents = const [];
+        _文档s = const [];
         _pendingDocument = null;
         _pendingDocumentText = null;
       });
@@ -1291,12 +1291,12 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     }
   }
 
-  Future<void> _setOverlayEnabled(bool enabled) async {
-    final applied = await OverlayControllerService.instance.setEnabled(enabled);
+  Future<void> _set悬浮窗Enabled(bool enabled) async {
+    final applied = await 悬浮窗ControllerService.instance.setEnabled(enabled);
     if (!mounted) return;
     setState(() {});
     if (!applied && enabled) {
-      _showSnack('Display Over Apps permission required.');
+      _showSnack('需要「显示在其他应用上层」权限。');
     }
   }
 
@@ -1322,12 +1322,12 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     } on FormatException {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Not a valid .pcskill file')),
+        const SnackBar(content: Text('不是有效的 .pcskill 文件')),
       );
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Couldn't import that file.")),
+        const SnackBar(content: Text("无法导入该文件。")),
       );
     }
   }
@@ -1341,7 +1341,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         leading: IconButton(
           icon: const Icon(Icons.menu),
           onPressed: _openConversationList,
-          tooltip: 'Conversations',
+          tooltip: '对话列表',
         ),
         title: Text(_conversation.title, overflow: TextOverflow.ellipsis),
         actions: [
@@ -1355,19 +1355,19 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
               if (value == 'clear') {
                 setState(() {
                   _conversation = Conversation();
-                  _documents = const [];
+                  _文档s = const [];
                   _pendingDocument = null;
                   _pendingDocumentText = null;
                 });
                 _loadDocuments();
               } else if (value == 'skills') {
                 Navigator.of(context).push(
-                  MaterialPageRoute<void>(builder: (_) => const SkillsScreen()),
+                  MaterialPageRoute<void>(builder: (_) => const 技能Screen()),
                 );
               } else if (value == 'workflows') {
                 Navigator.of(context).push(
                   MaterialPageRoute<void>(
-                    builder: (_) => const WorkflowsScreen(),
+                    builder: (_) => const 工作流Screen(),
                   ),
                 );
               } else if (value == 'import_skill') {
@@ -1375,19 +1375,19 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
               }
             },
             itemBuilder: (_) => const [
-              PopupMenuItem(value: 'clear', child: Text('New chat')),
-              PopupMenuItem(value: 'skills', child: Text('Skills')),
-              PopupMenuItem(value: 'workflows', child: Text('Workflows')),
-              PopupMenuItem(value: 'import_skill', child: Text('Import skill…')),
+              PopupMenuItem(value: 'clear', child: Text('新对话')),
+              PopupMenuItem(value: 'skills', child: Text('技能')),
+              PopupMenuItem(value: 'workflows', child: Text('工作流')),
+              PopupMenuItem(value: 'import_skill', child: Text('导入技能…')),
             ],
           ),
         ],
       ),
       body: Column(
         children: [
-          _OverlayPreferenceCard(
+          _悬浮窗PreferenceCard(
             enabled: PrefsService.instance.current.overlayEnabled,
-            onChanged: _setOverlayEnabled,
+            onChanged: _set悬浮窗Enabled,
           ),
           ValueListenableBuilder<GemmaState>(
             valueListenable: GemmaService.instance.state,
@@ -1425,12 +1425,12 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                           if (state == GemmaState.error)
                             TextButton(
                               onPressed: _retrySetup,
-                              child: const Text('Retry'),
+                              child: const Text('重试'),
                             ),
                           if (state == GemmaState.notInstalled)
                             TextButton(
                               onPressed: _retrySetup,
-                              child: const Text('Set up'),
+                              child: const Text('去设置'),
                             ),
                         ],
                       ),
@@ -1477,7 +1477,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                               state == EmbedderState.notInstalled)
                             TextButton(
                               onPressed: _retrySetup,
-                              child: const Text('Retry'),
+                              child: const Text('重试'),
                             ),
                         ],
                       ),
@@ -1506,7 +1506,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                         loadingText: m.isAssistant && m.text.isEmpty && _busy
                             ? _thinkingStatus
                             : null,
-                        onRetry: isLastFailed
+                        on重试: isLastFailed
                             ? _retry
                             : i == _conversation.messages.length - 1 &&
                                   m.isAssistant &&
@@ -1522,7 +1522,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           ),
           if (_indexing)
             _IndexingDocumentBanner(
-              name: _indexingDocumentName ?? 'document',
+              name: _indexingDocumentName ?? '文档',
               status: _indexingStatus,
             ),
           ValueListenableBuilder<GemmaState>(
@@ -1535,8 +1535,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                 builder: (context, embedderState, _) {
                   final embedderReady =
                       embedderState == EmbedderState.installed;
-                  return ChatInput(
-                    onSend: _handleSend,
+                  return 对话Input(
+                    on发送: _handle发送,
                     enabled: !_busy && modelReady && embedderReady,
                     attachedImage: _pendingImage,
                     attachedImageName: _pendingImageName,
@@ -1566,7 +1566,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   String _bannerForState(GemmaState state) {
     switch (state) {
       case GemmaState.notInstalled:
-        return 'Claw needs to finish setup before you can chat.';
+        return '需要完成设置后才能聊天。';
       case GemmaState.installing:
         return '$_thinkingStatus...';
       case GemmaState.installed:
@@ -1584,11 +1584,11 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   String _bannerForEmbedderState(EmbedderState state) {
     switch (state) {
       case EmbedderState.notInstalled:
-        return 'Claw needs document understanding setup before you can chat.';
+        return '需要完成文档理解设置后才能聊天。';
       case EmbedderState.installing:
         return '$_indexingStatus...';
       case EmbedderState.error:
-        return 'Document understanding setup failed. Retry to finish setup.';
+        return '文档理解设置失败。请重试以完成设置。';
       case EmbedderState.installed:
         return '';
     }
@@ -1638,7 +1638,7 @@ class _EmptyState extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 16),
-            Text('Ask Claw anything', style: theme.textTheme.titleLarge),
+            Text('随便问爪爪', style: theme.textTheme.titleLarge),
             const SizedBox(height: 8),
             Text(
               'Attach a screenshot, paste text, or just type. Everything runs on-device.',
@@ -1654,8 +1654,8 @@ class _EmptyState extends StatelessWidget {
   }
 }
 
-class _OverlayPreferenceCard extends StatelessWidget {
-  const _OverlayPreferenceCard({
+class _悬浮窗PreferenceCard extends StatelessWidget {
+  const _悬浮窗PreferenceCard({
     required this.enabled,
     required this.onChanged,
   });
@@ -1684,11 +1684,11 @@ class _OverlayPreferenceCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Overlay', style: theme.textTheme.titleSmall),
+                    Text('悬浮窗', style: theme.textTheme.titleSmall),
                     const SizedBox(height: 2),
                     Text(
                       enabled
-                          ? 'Active when PocketClaw is in background.'
+                          ? 'PocketClaw 在后台时生效。'
                           : 'Off. Turn on for the floating assistant.',
                       style: theme.textTheme.labelSmall,
                     ),
@@ -1749,9 +1749,9 @@ class _IndexingDocumentBanner extends StatelessWidget {
 }
 
 class _DocumentPreviewSheet extends StatefulWidget {
-  const _DocumentPreviewSheet({required this.document});
+  const _DocumentPreviewSheet({required this.文档});
 
-  final Document document;
+  final Document 文档;
 
   @override
   State<_DocumentPreviewSheet> createState() => _DocumentPreviewSheetState();
@@ -1766,11 +1766,11 @@ class _DocumentPreviewSheetState extends State<_DocumentPreviewSheet> {
     super.initState();
     _chunksFuture = RagService.instance
         .getDocStarts(
-          conversationId: widget.document.conversationId,
-          perDocLimit: widget.document.chunkCount,
+          conversationId: widget.文档.conversationId,
+          perDocLimit: widget.文档.chunkCount,
         )
         .then(
-          (all) => all.where((c) => c.docName == widget.document.name).toList(),
+          (all) => all.where((c) => c.docName == widget.文档.name).toList(),
         );
   }
 
@@ -1818,12 +1818,12 @@ class _DocumentPreviewSheetState extends State<_DocumentPreviewSheet> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          widget.document.name,
+                          widget.文档.name,
                           style: theme.textTheme.titleMedium,
                           overflow: TextOverflow.ellipsis,
                         ),
                         Text(
-                          '${widget.document.chunkCount} sections',
+                          '${widget.文档.chunkCount} sections',
                           style: theme.textTheme.bodySmall?.copyWith(
                             color: theme.colorScheme.onSurfaceVariant,
                           ),
@@ -1863,7 +1863,7 @@ class _DocumentPreviewSheetState extends State<_DocumentPreviewSheet> {
                     return Padding(
                       padding: const EdgeInsets.all(24),
                       child: Text(
-                        "Couldn't load the document content.",
+                        "无法加载文档内容。",
                         style: theme.textTheme.bodyMedium,
                       ),
                     );
@@ -1915,10 +1915,10 @@ class _SettingsDrawer extends StatefulWidget {
 }
 
 class _SettingsDrawerState extends State<_SettingsDrawer> with WidgetsBindingObserver {
-  bool _overlayGranted = false;
-  bool _micGranted = false;
-  bool _cameraGranted = false;
-  bool _notificationGranted = false;
+  bool _overlay授权ed = false;
+  bool _mic授权ed = false;
+  bool _camera授权ed = false;
+  bool _notification授权ed = false;
 
   final _keyController = TextEditingController();
 
@@ -1927,7 +1927,7 @@ class _SettingsDrawerState extends State<_SettingsDrawer> with WidgetsBindingObs
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _keyController.text = PrefsService.instance.current.picovoiceAccessKey ?? '';
-    _checkPermissions();
+    _check权限();
   }
 
   @override
@@ -1940,32 +1940,32 @@ class _SettingsDrawerState extends State<_SettingsDrawer> with WidgetsBindingObs
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      _checkPermissions();
+      _check权限();
     }
   }
 
-  Future<void> _checkPermissions() async {
-    final overlay = await FlutterOverlayWindow.isPermissionGranted();
-    final status = await DeviceActionsService.instance.checkAppPermissions();
+  Future<void> _check权限() async {
+    final overlay = await Flutter悬浮窗Window.isPermission授权ed();
+    final status = await DeviceActionsService.instance.checkApp权限();
     if (mounted) {
       setState(() {
-        _overlayGranted = overlay;
-        _micGranted = status['mic'] ?? false;
-        _cameraGranted = status['camera'] ?? false;
-        _notificationGranted = status['notifications'] ?? false;
+        _overlay授权ed = overlay;
+        _mic授权ed = status['mic'] ?? false;
+        _camera授权ed = status['camera'] ?? false;
+        _notification授权ed = status['notifications'] ?? false;
       });
     }
   }
 
-  Future<void> _grantOverlay() async {
-    await OverlayControllerService.instance.ensurePermission();
-    await _checkPermissions();
+  Future<void> _grant悬浮窗() async {
+    await 悬浮窗ControllerService.instance.ensurePermission();
+    await _check权限();
   }
 
   Future<void> _grantSystem() async {
-    await DeviceActionsService.instance.requestAppPermissions();
+    await DeviceActionsService.instance.requestApp权限();
     await Future<void>.delayed(const Duration(milliseconds: 600));
-    await _checkPermissions();
+    await _check权限();
   }
 
   Future<void> _saveKey(String val) async {
@@ -2019,27 +2019,27 @@ class _SettingsDrawerState extends State<_SettingsDrawer> with WidgetsBindingObs
                     const SizedBox(height: 10),
                     _PermissionItem(
                       icon: Icons.open_in_new,
-                      title: 'Display Over Apps',
-                      granted: _overlayGranted,
-                      onGrant: _grantOverlay,
+                      title: '显示在其他应用上层',
+                      granted: _overlay授权ed,
+                      on授权: _grant悬浮窗,
                     ),
                     _PermissionItem(
                       icon: Icons.mic_none,
-                      title: 'Microphone',
-                      granted: _micGranted,
-                      onGrant: _grantSystem,
+                      title: '麦克风',
+                      granted: _mic授权ed,
+                      on授权: _grantSystem,
                     ),
                     _PermissionItem(
                       icon: Icons.camera_alt_outlined,
-                      title: 'Camera & Vision',
-                      granted: _cameraGranted,
-                      onGrant: _grantSystem,
+                      title: '相机与视觉',
+                      granted: _camera授权ed,
+                      on授权: _grantSystem,
                     ),
                     _PermissionItem(
                       icon: Icons.notifications_none,
-                      title: 'Notifications',
-                      granted: _notificationGranted,
-                      onGrant: _grantSystem,
+                      title: '通知',
+                      granted: _notification授权ed,
+                      on授权: _grantSystem,
                     ),
                     const SizedBox(height: 8),
                     DecoratedBox(
@@ -2074,7 +2074,7 @@ class _SettingsDrawerState extends State<_SettingsDrawer> with WidgetsBindingObs
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      'Android security rules require permission removal / revocation to be done manually via system settings. Tap above to open settings and revoke permissions.',
+                      '根据 Android 安全规则，撤销权限需在系统设置中手动完成。点上方打开设置。',
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: theme.colorScheme.onSurfaceVariant,
                         fontSize: 9,
@@ -2090,8 +2090,8 @@ class _SettingsDrawerState extends State<_SettingsDrawer> with WidgetsBindingObs
                     ),
                     const SizedBox(height: 10),
                     _SwitchSetting(
-                      title: '"Hey PC" Wake Word',
-                      subtitle: 'Continuous background listening.',
+                      title: '「嘿 PC」唤醒词',
+                      subtitle: '持续后台聆听。',
                       value: prefs.continuousListening,
                       onChanged: (val) async {
                         await PrefsService.instance.update(
@@ -2101,8 +2101,8 @@ class _SettingsDrawerState extends State<_SettingsDrawer> with WidgetsBindingObs
                       },
                     ),
                     _SwitchSetting(
-                      title: 'Keep Screen Awake',
-                      subtitle: 'Acquire Wakelock when listening.',
+                      title: '保持屏幕常亮',
+                      subtitle: '聆听时获取唤醒锁。',
                       value: prefs.keepScreenAwake,
                       onChanged: (val) async {
                         await PrefsService.instance.update(
@@ -2130,7 +2130,7 @@ class _SettingsDrawerState extends State<_SettingsDrawer> with WidgetsBindingObs
                     TextField(
                       controller: _keyController,
                       decoration: const InputDecoration(
-                        hintText: 'Porcupine AccessKey...',
+                        hintText: 'Porcupine AccessKey…',
                         contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                       ),
                       onChanged: _saveKey,
@@ -2151,13 +2151,13 @@ class _PermissionItem extends StatelessWidget {
     required this.icon,
     required this.title,
     required this.granted,
-    required this.onGrant,
+    required this.on授权,
   });
 
   final IconData icon;
   final String title;
   final bool granted;
-  final VoidCallback onGrant;
+  final VoidCallback on授权;
 
   @override
   Widget build(BuildContext context) {
@@ -2179,7 +2179,7 @@ class _PermissionItem extends StatelessWidget {
           style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
         ),
         trailing: TextButton(
-          onPressed: granted ? null : onGrant,
+          onPressed: granted ? null : on授权,
           child: Text(
             granted ? 'ACTIVE' : 'GRANT',
             style: TextStyle(
