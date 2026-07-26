@@ -8,9 +8,9 @@ import '../services/dynamic_ui/dynamic_ui_service.dart';
 import '../services/dynamic_ui/component_spec.dart';
 import 'dynamic_component_widget.dart';
 
-/// Sentinel that 对话Screen writes into a message's text field when a
+/// Sentinel that ChatScreen writes into a message's text field when a
 /// generation fails. The bubble renderer replaces it with a friendly
-/// error UI + a 重试 button.
+/// error UI + a Retry button.
 const String kErrorSentinel = '__CLAW_ERROR__';
 
 /// Renders one message in the chat thread.
@@ -18,14 +18,14 @@ class MessageBubble extends StatelessWidget {
   const MessageBubble({
     super.key,
     required this.message,
-    this.on重试,
+    this.onRetry,
     this.onDocTap,
     this.loadingText,
     this.onCommand,
   });
 
   final Message message;
-  final VoidCallback? on重试;
+  final VoidCallback? onRetry;
 
   /// Called when the doc-attachment card is tapped (to open preview).
   /// Null = card is non-interactive (e.g. inside the sender's bubble
@@ -117,10 +117,10 @@ class MessageBubble extends StatelessWidget {
                       ),
                     ],
                   ),
-                  if (on重试 != null) ...[
+                  if (onRetry != null) ...[
                     const SizedBox(height: 6),
                     TextButton.icon(
-                      onPressed: on重试,
+                      onPressed: onRetry,
                       icon: Icon(Icons.refresh, size: 16, color: textColor),
                       label: Text('重试', style: TextStyle(color: textColor)),
                       style: TextButton.styleFrom(
@@ -155,9 +155,9 @@ class MessageBubble extends StatelessWidget {
           _MessageActions(
             isUser: isUser,
             copyText: _copyableText(message),
-            on重试: on重试,
-            on复制: (value) => _copy(context, value),
-            on分享: (value) => _share(context, value),
+            onRetry: onRetry,
+            onCopy: (value) => _copy(context, value),
+            onShare: (value) => _share(context, value),
           ),
         ],
       ),
@@ -167,7 +167,7 @@ class MessageBubble extends StatelessWidget {
   String _copyableText(Message message) {
     final parts = <String>[];
     if (message.hasDoc) {
-      parts.add('[Attached 文档: ${message.attachedDocName}]');
+      parts.add('[Attached document: ${message.attachedDocName}]');
     }
     if (message.hasImage) {
       parts.add('[Attached image: ${message.imageName ?? 'uploaded image'}]');
@@ -233,16 +233,16 @@ class _MessageActions extends StatelessWidget {
   const _MessageActions({
     required this.isUser,
     required this.copyText,
-    required this.on复制,
-    required this.on分享,
-    this.on重试,
+    required this.onCopy,
+    required this.onShare,
+    this.onRetry,
   });
 
   final bool isUser;
   final String copyText;
-  final VoidCallback? on重试;
-  final void Function(String) on复制;
-  final void Function(String) on分享;
+  final VoidCallback? onRetry;
+  final void Function(String) onCopy;
+  final void Function(String) onShare;
 
   @override
   Widget build(BuildContext context) {
@@ -261,20 +261,20 @@ class _MessageActions extends StatelessWidget {
             icon: Icons.copy_outlined,
             label: '复制',
             color: color,
-            onPressed: copyText.trim().isEmpty ? null : () => on复制(copyText),
+            onPressed: copyText.trim().isEmpty ? null : () => onCopy(copyText),
           ),
           _ActionButton(
             icon: Icons.ios_share_outlined,
             label: '分享',
             color: color,
-            onPressed: copyText.trim().isEmpty ? null : () => on分享(copyText),
+            onPressed: copyText.trim().isEmpty ? null : () => onShare(copyText),
           ),
-          if (on重试 != null)
+          if (onRetry != null)
             _ActionButton(
               icon: Icons.refresh,
               label: '再试一次',
               color: color,
-              onPressed: on重试,
+              onPressed: onRetry,
             ),
         ],
       ),
@@ -331,7 +331,7 @@ class _AssistantMessageContent extends StatelessWidget {
           if (segment.pcuiSpec != null)
             DynamicComponentWidget(spec: segment.pcuiSpec!, onCommand: onCommand)
           else if (segment.isCode)
-            _复制ableCodeBlock(code: segment.text)
+            _CopyableCodeBlock(code: segment.text)
           else if (segment.text.trim().isNotEmpty)
             MarkdownBody(
               data: segment.text,
@@ -389,8 +389,8 @@ class _ContentSegment {
   final ComponentSpec? pcuiSpec;
 }
 
-class _复制ableCodeBlock extends StatelessWidget {
-  const _复制ableCodeBlock({required this.code});
+class _CopyableCodeBlock extends StatelessWidget {
+  const _CopyableCodeBlock({required this.code});
 
   final String code;
 
